@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mezzio Quick-Start — Build Your First PHP API</title>
+<meta name="description" content="A hands-on quick-start guide to Mezzio, the PHP PSR-15 middleware microframework. Read it end-to-end and finish with a working API.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Source+Sans+3:ital,wght@0,400..700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="sidebar">☰ Menu</button>
+  <a class="brand" href="#top">
+    <span class="mark">mezzio<em>://</em>quick-start</span>
+    <span class="sub">Your first API</span>
+  </a>
+  <span class="spacer"></span>
+  <a class="ext" href="https://docs.mezzio.dev" target="_blank" rel="noopener">Official docs ↗</a>
+</header>
+
+<div class="shell">
+
+<nav class="sidebar" id="sidebar" aria-label="Guide sections">
+  <div class="nav-group">
+    <p class="group-label">Getting started</p>
+    <ol>
+      <li><a href="#intro"><span class="n">01</span>Introduction</a></li>
+      <li><a href="#installation"><span class="n">02</span>Prerequisites &amp; installation</a></li>
+      <li><a href="#structure"><span class="n">03</span>Project structure</a></li>
+    </ol>
+  </div>
+  <div class="nav-group">
+    <p class="group-label">Core concepts</p>
+    <ol>
+      <li><a href="#lifecycle"><span class="n">04</span>The request lifecycle</a></li>
+      <li><a href="#routing"><span class="n">05</span>Routing</a></li>
+      <li><a href="#middleware"><span class="n">06</span>Middleware</a></li>
+      <li><a href="#piping"><span class="n">07</span>Piping</a></li>
+      <li><a href="#stacking"><span class="n">08</span>Middleware stacking</a></li>
+      <li><a href="#handlers"><span class="n">09</span>Request handlers</a></li>
+      <li><a href="#container"><span class="n">10</span>The service container</a></li>
+      <li><a href="#configuration"><span class="n">11</span>Configuration</a></li>
+    </ol>
+  </div>
+  <div class="nav-group">
+    <p class="group-label">Build the API</p>
+    <ol>
+      <li><a href="#worked-example"><span class="n">12</span>Worked example: Products API</a></li>
+      <li><a href="#database"><span class="n">13</span>Setting up a database</a></li>
+      <li><a href="#services"><span class="n">14</span>Third-party services</a></li>
+    </ol>
+  </div>
+  <div class="nav-group">
+    <p class="group-label">Ship it</p>
+    <ol>
+      <li><a href="#errors"><span class="n">15</span>Error handling</a></li>
+      <li><a href="#testing"><span class="n">16</span>Testing the API</a></li>
+      <li><a href="#next-steps"><span class="n">17</span>Next steps</a></li>
+    </ol>
+  </div>
+</nav>
+
+<button class="scrim" id="scrim" tabindex="-1" aria-hidden="true"></button>
+
+<main class="content" id="top">
+<div class="content-inner">
+
+<div class="hero">
+  <p class="eyebrow">$ composer create-project mezzio/mezzio-skeleton</p>
+  <h1>Build your first API with <em>Mezzio</em></h1>
+  <p class="lede">Mezzio is PHP's PSR-15 middleware microframework. This guide takes you from an empty directory to a working JSON API — explaining every concept you pass through on the way, and nothing you don't need yet.</p>
+  <div class="hero-meta">
+    <span>PHP 8.1+</span>
+    <span>No Mezzio experience assumed</span>
+    <span>Read top to bottom · ~45 min</span>
+    <span>You finish with a running API</span>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<section class="doc" id="intro">
+<h2><span class="sec-n">01</span>Introduction — what Mezzio is</h2>
+
+<p><strong>Mezzio</strong> (formerly <em>Zend Expressive</em>, now part of the <a href="https://getlaminas.org" target="_blank" rel="noopener">Laminas Project</a>) is a <strong>microframework for building PHP applications out of middleware</strong>. Instead of giving you a big framework with controllers, an ORM, a templating layer, and a queue system baked in, Mezzio gives you one sharp idea: an HTTP request flows through a pipeline of small, composable layers, and one of them produces the response.</p>
+
+<p>Mezzio is built on open PHP standards rather than framework-specific conventions. Two of them matter for this guide, and we'll introduce each properly when it comes up:</p>
+<ul>
+  <li><strong>PSR-15</strong> — the standard interface for HTTP middleware and request handlers (sections <a href="#middleware">06</a> and <a href="#handlers">09</a>).</li>
+  <li><strong>PSR-11</strong> — the standard interface for dependency injection containers (section <a href="#container">10</a>).</li>
+</ul>
+<p>Because everything is standards-based, the parts are swappable: Mezzio lets you pick your router, your DI container, and your template engine at install time — or replace them later without rewriting your app.</p>
+
+<h3>Micro-framework vs. full-stack framework</h3>
+<p>If you've used Laravel or Symfony, here's where Mezzio sits:</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th></th><th>Full-stack (Laravel, Symfony)</th><th>Micro (Mezzio)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Ships with</strong></td>
+      <td>ORM, auth, queues, mail, templating, CLI — batteries included</td>
+      <td>An HTTP pipeline, a router, a DI container. You add the rest as you need it</td>
+    </tr>
+    <tr>
+      <td><strong>Structure</strong></td>
+      <td>Convention-driven: the framework decides where things live and how they're wired</td>
+      <td>Explicit: you wire every route, middleware, and service yourself — nothing happens by magic</td>
+    </tr>
+    <tr>
+      <td><strong>Learning curve</strong></td>
+      <td>Fast start, large surface area to learn eventually</td>
+      <td>A handful of concepts (this guide covers all of them), then you're done</td>
+    </tr>
+    <tr>
+      <td><strong>Sweet spot</strong></td>
+      <td>Product apps that want everything integrated</td>
+      <td>APIs, microservices, and apps that want a small, explicit, standards-based core</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h3>When to reach for Mezzio</h3>
+<ul>
+  <li>You're building a <strong>JSON API or microservice</strong> and don't want to carry a full-stack framework for it.</li>
+  <li>You want <strong>explicit wiring you can read</strong> — every route and middleware in your app is listed in two files you own.</li>
+  <li>You care about <strong>PHP standards (PSR-7/11/15)</strong> so your code and third-party packages compose cleanly.</li>
+  <li>You want to <strong>choose your own components</strong> — swap FastRoute for another router, or laminas-servicemanager for another container.</li>
+</ul>
+
+<p>If instead you want an admin panel, an ORM, and auth scaffolding out of the box next week, a full-stack framework will serve you better. Mezzio optimizes for small, sharp, long-lived services.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="installation">
+<h2><span class="sec-n">02</span>Prerequisites &amp; installation</h2>
+
+<h3>What you need</h3>
+<ul>
+  <li><strong>PHP 8.1 or newer</strong> — check with <code>php -v</code></li>
+  <li><strong>Composer 2</strong> — check with <code>composer -V</code></li>
+  <li>A terminal and your editor. That's all — no database or web server needed yet.</li>
+</ul>
+
+<h3>Create the project</h3>
+<p>Mezzio ships an official skeleton that scaffolds a working application. One command:</p>
+
+<figure class="codeblock term">
+<pre><code class="language-bash">composer create-project mezzio/mezzio-skeleton mezzio-api
+cd mezzio-api</code></pre>
+</figure>
+
+<p>The installer asks a few questions — this is Mezzio's "choose your own components" idea in action. For this guide, answer:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Prompt</th><th>Choose</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Install a minimal skeleton?</td>
+      <td><code>n</code> (full skeleton)</td>
+      <td>The full skeleton gives you a working example handler to learn from</td>
+    </tr>
+    <tr>
+      <td>Structure: flat or modular?</td>
+      <td>Flat</td>
+      <td>One <code>src/App</code> module is plenty for a first API</td>
+    </tr>
+    <tr>
+      <td>Dependency injection container</td>
+      <td>laminas-servicemanager</td>
+      <td>The default; best documented with Mezzio</td>
+    </tr>
+    <tr>
+      <td>Router</td>
+      <td>FastRoute</td>
+      <td>Fast, simple syntax, the common choice</td>
+    </tr>
+    <tr>
+      <td>Template engine</td>
+      <td>None</td>
+      <td>We're building a JSON API — no HTML views needed</td>
+    </tr>
+    <tr>
+      <td>Error handler</td>
+      <td>Whoops</td>
+      <td>Friendly, detailed error pages while developing</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Run it</h3>
+<p>The skeleton includes a Composer script that starts PHP's built-in web server:</p>
+
+<figure class="codeblock term">
+<pre><code class="language-bash">composer serve
+# > Executing: php -S 0.0.0.0:8080 -t public/</code></pre>
+</figure>
+
+<p>Now hit the example endpoint the skeleton ships with:</p>
+
+<figure class="codeblock term">
+<pre><code class="language-bash">curl http://localhost:8080/api/ping
+# {"ack":1752402882}</code></pre>
+</figure>
+
+<p>That JSON came from a real PSR-15 request handler, dispatched through a real middleware pipeline. You already have a working Mezzio API — the rest of this guide is about understanding it and extending it.</p>
+
+<div class="note">
+  <span class="tag">Enable development mode</span>
+  <p>Run <code>composer development-enable</code> once after installing. It switches on debug config and disables config caching so your changes show up immediately. Its counterpart, <code>composer development-disable</code>, is what you'd run in production. If an edit ever seems to be ignored, clear the cache: <code>php bin/clear-config-cache.php</code>.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="structure">
+<h2><span class="sec-n">03</span>Project structure walkthrough</h2>
+
+<p>Here's what <code>create-project</code> gave you. The two files highlighted in copper — <code>pipeline.php</code> and <code>routes.php</code> — are the ones you'll touch most as a newcomer.</p>
+
+<div class="tree">
+<pre><span class="d">mezzio-api/</span>
+├── <span class="d">bin/</span>
+│   └── clear-config-cache.php   <span class="c">← wipe the merged-config cache</span>
+├── <span class="d">config/</span>
+│   ├── <span class="d">autoload/</span>              <span class="c">← config fragments, auto-merged (§11)</span>
+│   │   ├── dependencies.global.php
+│   │   ├── development.local.php  <span class="c">← created by development-enable</span>
+│   │   └── mezzio.global.php
+│   ├── config.php               <span class="c">← merges ALL config into one array</span>
+│   ├── container.php            <span class="c">← builds the DI container from config</span>
+│   ├── <span class="hot">pipeline.php</span>             <span class="c">← the middleware pipeline (§07)</span>
+│   └── <span class="hot">routes.php</span>               <span class="c">← your route definitions (§05)</span>
+├── <span class="d">data/</span>
+│   └── <span class="d">cache/</span>                 <span class="c">← merged-config cache lives here</span>
+├── <span class="d">public/</span>
+│   └── index.php                <span class="c">← the ONLY entry point (§04)</span>
+├── <span class="d">src/</span>
+│   └── <span class="d">App/</span>                   <span class="c">← your application module</span>
+│       └── <span class="d">src/</span>
+│           ├── ConfigProvider.php   <span class="c">← registers App's services &amp; wiring</span>
+│           └── <span class="d">Handler/</span>
+│               ├── HomePageHandler.php
+│               ├── HomePageHandlerFactory.php
+│               └── PingHandler.php  <span class="c">← the /api/ping you just curled</span>
+├── <span class="d">test/</span>                      <span class="c">← PHPUnit tests mirror src/</span>
+└── composer.json</pre>
+</div>
+
+<h3>The key files, one by one</h3>
+
+<h4><code>public/index.php</code> — the entry point</h4>
+<p>Every single HTTP request lands here; there are no other entry scripts. It builds the container, pulls the <code>Application</code> out of it, loads the pipeline and routes, and runs the app:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">public/index.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+use Mezzio\Application;
+use Mezzio\MiddlewareFactory;
+use Psr\Container\ContainerInterface;
+
+// Serve static files directly when using the built-in PHP server
+if (PHP_SAPI === 'cli-server' &amp;&amp; $_SERVER['SCRIPT_FILENAME'] !== __FILE__) {
+    return false;
+}
+
+chdir(dirname(__DIR__));
+require 'vendor/autoload.php';
+
+// Self-called closure so nothing leaks into global scope
+(function () {
+    /** @var ContainerInterface $container */
+    $container = require 'config/container.php';
+
+    /** @var Application $app */
+    $app     = $container-&gt;get(Application::class);
+    $factory = $container-&gt;get(MiddlewareFactory::class);
+
+    // Load the pipeline and the routes, then go
+    (require 'config/pipeline.php')($app, $factory, $container);
+    (require 'config/routes.php')($app, $factory, $container);
+
+    $app-&gt;run();
+})();</code></pre>
+</figure>
+
+<h4><code>config/pipeline.php</code> vs <code>config/routes.php</code> — the two files you'll live in</h4>
+<p>These two files look similar (both return a function that receives <code>$app</code>) but do <strong>different jobs, and the difference matters</strong>:</p>
+<ul>
+  <li><strong><code>pipeline.php</code> answers: "what happens to <em>every</em> request?"</strong> It registers middleware — error handling, routing, dispatch — in the exact order requests pass through them. It never mentions URLs like <code>/api/products</code>.</li>
+  <li><strong><code>routes.php</code> answers: "which handler serves <em>this particular</em> URL + method?"</strong> It maps <code>GET /api/ping</code> to <code>PingHandler</code>. It says nothing about cross-cutting concerns like error handling.</li>
+</ul>
+<p>Rule of thumb: adding an <em>endpoint</em>? Touch <code>routes.php</code>. Adding behaviour that applies <em>across</em> endpoints (auth, CORS, JSON body parsing)? Touch <code>pipeline.php</code>.</p>
+
+<div class="tabs">
+  <div class="tab-row" role="tablist">
+    <button class="tab-btn" role="tab" aria-selected="true" type="button">config/pipeline.php</button>
+    <button class="tab-btn" role="tab" aria-selected="false" type="button">config/routes.php</button>
+  </div>
+  <div class="tab-panel active" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">config/pipeline.php — every request passes through this, in order</span><span class="grow"></span></div>
+    <pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+use Laminas\Stratigility\Middleware\ErrorHandler;
+use Mezzio\Application;
+use Mezzio\Handler\NotFoundHandler;
+use Mezzio\Helper\ServerUrlMiddleware;
+use Mezzio\Helper\UrlHelperMiddleware;
+use Mezzio\MiddlewareFactory;
+use Mezzio\Router\Middleware\DispatchMiddleware;
+use Mezzio\Router\Middleware\ImplicitHeadMiddleware;
+use Mezzio\Router\Middleware\ImplicitOptionsMiddleware;
+use Mezzio\Router\Middleware\MethodNotAllowedMiddleware;
+use Mezzio\Router\Middleware\RouteMiddleware;
+use Psr\Container\ContainerInterface;
+
+return function (Application $app, MiddlewareFactory $factory, ContainerInterface $container): void {
+    $app-&gt;pipe(ErrorHandler::class);          // catches exceptions from everything below
+    $app-&gt;pipe(ServerUrlMiddleware::class);
+
+    $app-&gt;pipe(RouteMiddleware::class);       // figures out WHICH route matches
+    $app-&gt;pipe(ImplicitHeadMiddleware::class);
+    $app-&gt;pipe(ImplicitOptionsMiddleware::class);
+    $app-&gt;pipe(MethodNotAllowedMiddleware::class);
+    $app-&gt;pipe(UrlHelperMiddleware::class);
+
+    $app-&gt;pipe(DispatchMiddleware::class);    // actually RUNS the matched handler
+    $app-&gt;pipe(NotFoundHandler::class);       // nothing matched → 404
+};</code></pre>
+    </figure>
+  </div>
+  <div class="tab-panel" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">config/routes.php — URL + method → handler, nothing else</span><span class="grow"></span></div>
+    <pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+use Mezzio\Application;
+use Mezzio\MiddlewareFactory;
+use Psr\Container\ContainerInterface;
+
+return static function (Application $app, MiddlewareFactory $factory, ContainerInterface $container): void {
+    $app-&gt;get('/', App\Handler\HomePageHandler::class, 'home');
+    $app-&gt;get('/api/ping', App\Handler\PingHandler::class, 'api.ping');
+};</code></pre>
+    </figure>
+  </div>
+</div>
+
+<h4><code>config/config.php</code> + <code>config/autoload/</code> — configuration aggregation</h4>
+<p><code>config.php</code> collects configuration from every module's <code>ConfigProvider</code> and every file in <code>config/autoload/</code>, and merges it all into one big array. Files ending in <code>.global.php</code> are shared settings you commit; <code>.local.php</code> files are machine-specific secrets that are git-ignored and win over global. Section <a href="#configuration">11</a> unpacks the merge rules.</p>
+
+<h4><code>src/App/</code> — your module</h4>
+<p>Your actual application code lives here. Two patterns to notice:</p>
+<ul>
+  <li><strong><code>Handler/</code></strong> — one class per endpoint (or resource). A handler receives the request and returns the response; it's the "controller" of the Mezzio world, covered in section <a href="#handlers">09</a>.</li>
+  <li><strong><code>ConfigProvider.php</code></strong> — the module's manifest. It tells the container "here are my services and how to build them". Covered in section <a href="#container">10</a>.</li>
+</ul>
+</section>
+<!-- ================================================================ -->
+<section class="doc" id="lifecycle">
+<h2><span class="sec-n">04</span>The request lifecycle — how data flows</h2>
+
+<p>This is the single most important section of the guide. Every other concept — routing, piping, handlers — is one stop on the journey a request makes through your app. Learn the journey once and everything else has a place to hang.</p>
+
+<span class="f-label">What</span>
+<p>The request lifecycle is the path every HTTP request takes: it enters at <code>public/index.php</code>, is converted into a PSR-7 request object, travels <em>inward</em> through each piped middleware in order, gets matched to a route and dispatched to a handler, and the handler's response travels back <em>outward</em> through the same middleware in reverse before being emitted to the client.</p>
+
+<span class="f-label">Why</span>
+<p>Frameworks with controllers and hooks scatter "what happens to a request" across many places. Mezzio makes the whole journey one explicit, ordered list (<code>pipeline.php</code>). When you wonder "where do I add auth?" or "why did this return 404?", you answer it by walking the pipeline in your head — there is nowhere else to look.</p>
+
+<span class="f-label">How</span>
+<p>Trace one request — <code>GET /api/ping</code> — through the skeleton you just installed:</p>
+
+<div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant IX as public/index.php
+    participant EH as ErrorHandler
+    participant RM as RouteMiddleware
+    participant DM as DispatchMiddleware
+    participant H as PingHandler
+
+    C->>IX: GET /api/ping
+    Note over IX: builds container,<br/>loads pipeline + routes,<br/>creates PSR-7 request
+    IX->>EH: request enters the pipeline
+    activate EH
+    EH->>RM: pass inward
+    activate RM
+    Note over RM: matches route,<br/>attaches RouteResult<br/>to the request
+    RM->>DM: pass inward
+    activate DM
+    DM->>H: run the matched handler
+    activate H
+    H-->>DM: JsonResponse {"ack": ...}
+    deactivate H
+    DM-->>RM: response travels back out
+    deactivate DM
+    RM-->>EH: response travels back out
+    deactivate RM
+    EH-->>IX: response reaches the edge
+    deactivate EH
+    IX-->>C: 200 OK + JSON body (emitted)
+</pre>
+<p class="caption">A request goes <strong>in</strong> through each layer, reaches the handler, and the response comes back <strong>out</strong> through the same layers in reverse.</p>
+</div>
+
+<p>In prose, the numbered steps are:</p>
+<ol>
+  <li>The web server hands the raw request to <code>public/index.php</code>.</li>
+  <li><code>index.php</code> builds the <strong>container</strong>, gets the <code>Application</code>, and registers everything in <code>pipeline.php</code> and <code>routes.php</code>.</li>
+  <li><code>$app-&gt;run()</code> turns PHP's superglobals into a <strong>PSR-7 <code>ServerRequest</code> object</strong> — from here on, "the request" is a value you pass around, not global state.</li>
+  <li>The request enters the pipeline and passes through each middleware <strong>in the order they were piped</strong>.</li>
+  <li><code>RouteMiddleware</code> asks the router "which route matches <code>GET /api/ping</code>?" and attaches the answer to the request.</li>
+  <li><code>DispatchMiddleware</code> reads that answer and invokes <code>PingHandler</code>.</li>
+  <li>The handler returns a <strong>PSR-7 <code>Response</code></strong>, which travels back out through the same middleware in reverse order — each gets a chance to inspect or modify it.</li>
+  <li>An <em>emitter</em> writes the status line, headers, and body to the client.</li>
+</ol>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>Airport security, both directions.</strong> Your request is a traveller. It enters the terminal (<code>index.php</code>), then passes a fixed sequence of checkpoints in order — ticket check (error handler armed), passport control (routing: <em>which gate is this traveller even going to?</em>), security screening (any middleware you add) — until it reaches its gate (the handler), where the actual business happens. The response is the return trip: it walks back <em>past every checkpoint in reverse</em>, and any checkpoint can stamp it on the way out (add a header, log the timing). And crucially: a checkpoint can <strong>turn a traveller away early</strong> — no boarding pass, no gate. That's a middleware short-circuiting with a 401.</p>
+</div>
+
+<span class="f-label">Use case</span>
+<p>Your API suddenly returns 404 for a route you swear you registered. With the lifecycle in your head, you debug in order: did the request reach <code>RouteMiddleware</code> (is your route in <code>routes.php</code>, spelled right, with the right method)? Did something <em>before</em> routing short-circuit it? Is <code>DispatchMiddleware</code> piped after <code>RouteMiddleware</code>? Nine times out of ten it's a typo in <code>routes.php</code> — and now you know exactly which of the two files to open.</p>
+
+<div class="note">
+  <span class="tag">Keep this diagram handy</span>
+  <p>The rest of this guide keeps referring back to this picture. Routing (§05) is what <code>RouteMiddleware</code> does. Piping (§07) is how the checkpoints get installed. Stacking (§08) is the in-and-back-out nesting. Handlers (§09) are the gate.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="routing">
+<h2><span class="sec-n">05</span>Routing</h2>
+
+<span class="f-label">What</span>
+<p>Routing maps an HTTP method + URL path to the handler that should serve it. In Mezzio, all routes are declared in <code>config/routes.php</code> using methods on <code>$app</code>.</p>
+
+<span class="f-label">Why</span>
+<p>Without a router, <code>index.php</code> would be a giant <code>if/else</code> on <code>$_SERVER['REQUEST_URI']</code>. The router centralizes that mapping, handles dynamic segments (<code>/products/42</code>), enforces HTTP methods, and — because it runs as middleware (<code>RouteMiddleware</code>, step 5 in the lifecycle) — the match result is attached to the request where later layers can read it.</p>
+
+<span class="f-label">How</span>
+<p>One method per HTTP verb, each taking a path, a handler, and an optional route name:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/routes.php</span><span class="grow"></span></div>
+<pre><code class="language-php">return static function (Application $app, MiddlewareFactory $factory, ContainerInterface $container): void {
+    // method constraint is built into the call:
+    $app-&gt;get('/api/products', App\Handler\ProductListHandler::class, 'products.list');
+    $app-&gt;post('/api/products', App\Handler\CreateProductHandler::class, 'products.create');
+
+    // route parameter: {id} — with an optional regex constraint (FastRoute syntax)
+    $app-&gt;get('/api/products/{id:\d+}', App\Handler\ProductHandler::class, 'products.get');
+    $app-&gt;delete('/api/products/{id:\d+}', App\Handler\DeleteProductHandler::class, 'products.delete');
+
+    // several methods, one handler:
+    $app-&gt;route('/api/status', App\Handler\StatusHandler::class, ['GET', 'HEAD'], 'api.status');
+};</code></pre>
+</figure>
+
+<p>Inside a handler, route parameters arrive as <strong>request attributes</strong>:</p>
+
+<figure class="codeblock">
+<pre><code class="language-php">public function handle(ServerRequestInterface $request): ResponseInterface
+{
+    $id = (int) $request-&gt;getAttribute('id');   // "42" from /api/products/42
+
+    // query strings are separate: /api/products?page=2
+    $page = (int) ($request-&gt;getQueryParams()['page'] ?? 1);
+
+    // ...
+}</code></pre>
+</figure>
+
+<p>Three details worth knowing on day one:</p>
+<ul>
+  <li><strong>Method constraints are strict.</strong> <code>POST /api/products/42</code> against the routes above returns <code>405 Method Not Allowed</code> (courtesy of <code>MethodNotAllowedMiddleware</code> in the pipeline), not 404.</li>
+  <li><strong>Route names</strong> (the third argument) let you generate URLs later with the <code>UrlHelper</code> instead of hard-coding paths.</li>
+  <li><strong>Regex constraints</strong> like <code>{id:\d+}</code> reject garbage early — <code>/api/products/abc</code> never reaches your handler.</li>
+</ul>
+
+<span class="f-label">Use case</span>
+<p>You're adding "fetch one product" to an existing products API. You add a single line — <code>$app-&gt;get('/api/products/{id:\d+}', ProductHandler::class, 'products.get')</code> — and write the handler. No pipeline changes, no config changes: endpoints live in <code>routes.php</code>, full stop.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="middleware">
+<h2><span class="sec-n">06</span>Middleware</h2>
+
+<span class="f-label">What</span>
+<p>Middleware is a class that sits <em>in the path</em> of the request. It receives the request plus a <code>$handler</code> representing "the rest of the pipeline", and it must return a response — either by delegating onward (<code>$handler-&gt;handle($request)</code>) or by producing one itself. The contract is PSR-15's <code>MiddlewareInterface</code>:</p>
+
+<figure class="codeblock">
+<pre><code class="language-php">interface MiddlewareInterface
+{
+    public function process(
+        ServerRequestInterface $request,
+        RequestHandlerInterface $handler   // "everything after me"
+    ): ResponseInterface;
+}</code></pre>
+</figure>
+
+<span class="f-label">Why</span>
+<p>Cross-cutting concerns — authentication, logging, CORS, body parsing — apply to <em>many</em> endpoints. Copy-pasting them into every handler doesn't scale, and base-class inheritance couples everything together. Middleware solves this by making each concern a self-contained layer you compose into the path. It's kept separate from handlers on purpose: a middleware is <em>infrastructure the request passes through</em>; a handler is <em>the business logic it was heading to</em>.</p>
+
+<span class="f-label">How</span>
+<p>A real middleware that checks an API key and either passes the request inward or short-circuits with a 401:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Middleware/ApiKeyMiddleware.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Middleware;
+
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class ApiKeyMiddleware implements MiddlewareInterface
+{
+    public function __construct(private readonly string $expectedKey)
+    {
+    }
+
+    public function process(
+        ServerRequestInterface $request,
+        RequestHandlerInterface $handler
+    ): ResponseInterface {
+        $key = $request-&gt;getHeaderLine('X-Api-Key');
+
+        if ($key !== $this-&gt;expectedKey) {
+            // Short-circuit: the request never goes deeper
+            return new JsonResponse(['error' =&gt; 'Invalid API key'], 401);
+        }
+
+        // Delegate inward — and optionally decorate the response on the way out
+        $response = $handler-&gt;handle($request);
+
+        return $response-&gt;withHeader('X-Authenticated', '1');
+    }
+}</code></pre>
+</figure>
+
+<p>Notice the three powers a middleware has, all visible in ten lines: <strong>inspect/modify the request</strong> before passing it on, <strong>refuse to pass it on</strong> (short-circuit), and <strong>inspect/modify the response</strong> on its way back out.</p>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>Middleware is a layer you pass through; a handler is the destination you arrive at.</strong> On a road trip, toll booths, border checks, and weigh stations are middleware — you pass through many of them, in order, and any one can turn you back. The city you're driving to is the handler — there's exactly one per trip, and reaching it is the whole point. Nobody confuses a toll booth with a destination; keep the same distinction between middleware and handlers.</p>
+</div>
+
+<span class="f-label">Use case</span>
+<p>Product asks: "log every API call with its response time." That's not any single endpoint's job — it's a <code>TimingMiddleware</code>: record <code>hrtime()</code>, call <code>$handler-&gt;handle($request)</code>, log the elapsed time, return the response. Pipe it once (next section) and every current <em>and future</em> endpoint is covered.</p>
+</section>
+<!-- ================================================================ -->
+<section class="doc" id="piping">
+<h2><span class="sec-n">07</span>Piping</h2>
+
+<span class="f-label">What</span>
+<p>"Piping" is Mezzio's word for <strong>registering middleware onto the application's pipeline</strong> with <code>$app-&gt;pipe()</code>. The order of <code>pipe()</code> calls in <code>config/pipeline.php</code> <em>is</em> the order requests flow through the middleware.</p>
+
+<span class="f-label">Why</span>
+<p>Something has to decide which middleware run, and in what sequence — should errors be caught before or after auth? Should the body be parsed before routing? Rather than hiding that ordering in annotations or framework internals, Mezzio makes it one readable file: the pipeline you pipe is the pipeline you get.</p>
+
+<span class="f-label">How</span>
+<p>There are three scopes at which middleware can attach, from broadest to narrowest:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/pipeline.php — global and path-segregated piping</span><span class="grow"></span></div>
+<pre><code class="language-php">// 1. GLOBAL: every request, no exceptions
+$app-&gt;pipe(TimingMiddleware::class);
+
+// 2. PATH-SEGREGATED: only requests whose path starts with /api
+$app-&gt;pipe('/api', ApiKeyMiddleware::class);</code></pre>
+</figure>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/routes.php — route-attached middleware</span><span class="grow"></span></div>
+<pre><code class="language-php">// 3. PER-ROUTE: an array runs as a mini-pipeline for this route only.
+//    The LAST entry must be the handler; everything before it is middleware.
+$app-&gt;post('/api/products', [
+    App\Middleware\ValidateProductMiddleware::class,
+    App\Handler\CreateProductHandler::class,
+], 'products.create');</code></pre>
+</figure>
+
+<p>How to choose: pipe <strong>globally</strong> for true infrastructure (error handling, logging), <strong>by path</strong> for concerns that cover a section of your API (auth on everything under <code>/api</code>, but not the public health check), and <strong>per-route</strong> for one endpoint's specific needs (validating one form's payload). Piped middleware runs for every matching request <em>even if no route matches</em>; route-attached middleware runs only after routing has already succeeded for that route.</p>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>Literal plumbing.</strong> Each <code>pipe()</code> call fits one more segment of pipe onto the line, and the request is the water: it enters at the first segment fitted and flows through every segment <em>in the order they were joined</em>. A path-segregated pipe is a branch line that only carries water headed for one wing of the building. And just like real plumbing, order is physical: fitting the water meter after the outlet means the outlet's usage never gets counted — pipe your <code>ErrorHandler</code> first or errors upstream of it go uncaught.</p>
+</div>
+
+<span class="f-label">Use case</span>
+<p>Your API needs to accept JSON request bodies. PSR-7 doesn't parse JSON automatically, so you pipe <code>BodyParamsMiddleware</code> (from <code>mezzio/mezzio-helpers</code>) once, before routing — and from then on every handler can call <code>$request-&gt;getParsedBody()</code> and get an array, whether the client sent JSON or a form. One <code>pipe()</code> line, app-wide capability. We do exactly this in the worked example (§12).</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="stacking">
+<h2><span class="sec-n">08</span>Middleware stacking</h2>
+
+<span class="f-label">What</span>
+<p>Stacking is what multiple piped middleware become at runtime: a nested chain where each layer wraps everything piped after it. Middleware #1 receives the request first and returns the response last; the innermost layer (ultimately your handler) runs in the middle.</p>
+
+<span class="f-label">Why</span>
+<p>The wrap-around shape is the whole trick: because each layer gets control <em>both before and after</em> everything inside it, one middleware can time a request (before + after), catch exceptions thrown anywhere deeper (that's exactly why <code>ErrorHandler</code> is piped first), or veto the request before deeper layers waste any work.</p>
+
+<span class="f-label">How</span>
+<p>Delegation is explicit: a middleware continues the chain by calling <code>$handler-&gt;handle($request)</code>, and whatever that returns is the response from every layer inside it.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart TB
+    REQ([Request]) --> A
+    subgraph A [ErrorHandler — piped 1st]
+      direction TB
+      subgraph B [ApiKeyMiddleware — piped 2nd]
+        direction TB
+        subgraph C [RouteMiddleware + DispatchMiddleware]
+          direction TB
+          H[/"ProductHandler<br/>(the destination)"/]
+        end
+      end
+    end
+    A --> RES([Response])
+    style H fill:#faf1e8,stroke:#b45a1e,stroke-width:2px
+</pre>
+<p class="caption">Piping order becomes nesting: each middleware wraps everything piped after it. The request burrows in; the response climbs back out.</p>
+</div>
+
+<p>The equivalent in plain code — this is literally the shape the pipeline executes:</p>
+
+<figure class="codeblock">
+<pre><code class="language-php">// Conceptually, three piped middleware become:
+$response = $errorHandler-&gt;process($request,
+    /* which internally calls */ fn ($req) =&gt; $apiKey-&gt;process($req,
+        /* which internally calls */ fn ($req) =&gt; $dispatch-&gt;process($req,
+            /* which finally runs */  fn ($req) =&gt; $productHandler-&gt;handle($req)
+        )
+    )
+);</code></pre>
+</figure>
+
+<h3>Short-circuiting: not calling <code>$handler-&gt;handle()</code></h3>
+<p>Delegating is a choice. If a middleware returns a response <em>without</em> calling <code>$handler-&gt;handle($request)</code>, every deeper layer — including routing and your handler — simply never runs. That's not a failure mode; it's a feature you'll use deliberately:</p>
+<ul>
+  <li><code>ApiKeyMiddleware</code> returns 401 → the handler never executes for unauthenticated requests.</li>
+  <li>A rate limiter returns 429 → no wasted database work.</li>
+  <li>A cache middleware returns a stored response → the whole inner stack is skipped on a hit.</li>
+</ul>
+<p>The bug to avoid is short-circuiting <em>by accident</em>: if your middleware forgets to call <code>$handler-&gt;handle($request)</code> (or drops its return value), every request stops at that layer. If every route suddenly returns the same response or a blank 200, look for the middleware that forgot to delegate.</p>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>Russian nesting dolls.</strong> Piping assembles a matryoshka: the first-piped middleware is the outermost doll, the handler is the solid doll at the very center. Opening the dolls is the request travelling inward; closing them back up, innermost first, is the response travelling out — so the outermost doll is <em>first to see the request and last to touch the response</em>. Short-circuiting is deciding not to open the next doll: whatever is inside it stays untouched.</p>
+</div>
+
+<span class="f-label">Use case</span>
+<p>You add caching to a slow reports endpoint. A <code>CacheMiddleware</code> piped at <code>/api/reports</code> checks Redis first: on a hit it returns the cached response (short-circuit — handler and database never run); on a miss it delegates inward, then stores the response it gets back on the way out. Both behaviours in one small class, possible only because of the wrap-around stacking shape.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="handlers">
+<h2><span class="sec-n">09</span>Request handlers</h2>
+
+<span class="f-label">What</span>
+<p>A request handler is the class at the center of the pipeline — the destination. It implements PSR-15's <code>RequestHandlerInterface</code>: one method, <code>handle()</code>, that takes the request and <strong>must</strong> return a response. Unlike middleware, it receives no <code>$handler</code> argument — there is nothing further to delegate to.</p>
+
+<figure class="codeblock">
+<pre><code class="language-php">interface RequestHandlerInterface
+{
+    public function handle(ServerRequestInterface $request): ResponseInterface;
+}</code></pre>
+</figure>
+
+<span class="f-label">Why</span>
+<p>The pipeline needs a guaranteed endpoint — something that always produces a response so every middleware above it has a response to pass back out. Handlers are also where Mezzio replaces the "controller with many action methods" pattern: one handler class per endpoint keeps each class small, single-purpose, and trivially testable (it's just an object with one method — no framework booting required).</p>
+
+<span class="f-label">How</span>
+<p>Here's the skeleton's <code>PingHandler</code>, the code behind the <code>curl</code> you ran in section 02 — a complete, real handler in ~20 lines:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/PingHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class PingHandler implements RequestHandlerInterface
+{
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        return new JsonResponse(['ack' =&gt; time()]);
+    }
+}</code></pre>
+</figure>
+
+<p><code>JsonResponse</code> comes from <a href="https://docs.laminas.dev/laminas-diactoros/" target="_blank" rel="noopener">laminas-diactoros</a>, the PSR-7 implementation the skeleton installs. It JSON-encodes your data and sets the <code>Content-Type</code> header; siblings like <code>EmptyResponse</code> (204) and <code>TextResponse</code> cover the other common cases.</p>
+
+<h3>Handler vs. middleware — the litmus test</h3>
+<div class="table-wrap">
+<table>
+  <thead><tr><th></th><th>Middleware</th><th>Handler</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Interface method</strong></td><td><code>process($request, $handler)</code></td><td><code>handle($request)</code></td></tr>
+    <tr><td><strong>Delegates onward?</strong></td><td>Usually — that's its job</td><td>Never — nothing to delegate to</td></tr>
+    <tr><td><strong>How many per request</strong></td><td>Many, in a stack</td><td>Exactly one</td></tr>
+    <tr><td><strong>Concern</strong></td><td>Cross-cutting (auth, logging, CORS)</td><td>The endpoint's business logic</td></tr>
+    <tr><td><strong>Registered in</strong></td><td><code>pipeline.php</code></td><td><code>routes.php</code></td></tr>
+  </tbody>
+</table>
+</div>
+<p>The test when writing a new class: <em>"could the request need to continue past me?"</em> If yes, it's middleware. If I'm the point of the request, it's a handler.</p>
+
+<span class="f-label">Use case</span>
+<p>Every endpoint you'll build in the worked example (§12) is a handler: <code>ProductListHandler</code> answers <code>GET /api/products</code>, <code>CreateProductHandler</code> answers <code>POST /api/products</code>. Each is one small class with one <code>handle()</code> method, and each can be unit-tested by constructing it and passing a fake request — no server involved.</p>
+</section>
+<!-- ================================================================ -->
+<section class="doc" id="container">
+<h2><span class="sec-n">10</span>Dependency injection &amp; the service container</h2>
+
+<span class="f-label">What</span>
+<p>The service container is a registry that knows how to <em>build</em> every object ("service") your app needs — handlers, middleware, database connections — and hands out ready-made instances on request. Mezzio talks to it through PSR-11, a two-method interface: <code>$container-&gt;get($name)</code> and <code>$container-&gt;has($name)</code>. The skeleton's implementation is <strong>laminas-servicemanager</strong>.</p>
+
+<span class="f-label">Why</span>
+<p>Your handlers need things: a repository, a PDO connection, an API client. Constructing those inside the handler (<code>new PDO(...)</code> in <code>handle()</code>) hard-codes the dependency, makes testing painful, and scatters connection details everywhere. Dependency injection flips it: the handler <em>declares</em> what it needs in its constructor, and the container assembles it. You saw the container born on line one of the lifecycle — <code>$container = require 'config/container.php'</code> — and in fact <strong>every handler and middleware in your app is pulled from it</strong>; that's why you register class <em>names</em> in <code>routes.php</code> rather than instances.</p>
+
+<span class="f-label">How</span>
+<p>Three pieces work together: a service with constructor dependencies, a <strong>factory</strong> that builds it, and a <strong>ConfigProvider</strong> entry that registers the factory.</p>
+
+<p><strong>1. The service declares what it needs:</strong></p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/ProductListHandler.php (excerpt)</span><span class="grow"></span></div>
+<pre><code class="language-php">final class ProductListHandler implements RequestHandlerInterface
+{
+    public function __construct(private readonly ProductRepository $products)
+    {
+    }
+    // ... handle() uses $this-&gt;products
+}</code></pre>
+</figure>
+
+<p><strong>2. A factory is a tiny invokable class that knows the recipe.</strong> It receives the container and pulls out whatever the service needs:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/ProductListHandlerFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Repository\ProductRepository;
+use Psr\Container\ContainerInterface;
+
+final class ProductListHandlerFactory
+{
+    public function __invoke(ContainerInterface $container): ProductListHandler
+    {
+        return new ProductListHandler(
+            $container-&gt;get(ProductRepository::class)
+        );
+    }
+}</code></pre>
+</figure>
+
+<p><strong>3. The ConfigProvider registers the wiring.</strong> Every module has one; it's a plain class returning an array, and its <code>dependencies</code> key is the container's instruction manual:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App;
+
+class ConfigProvider
+{
+    public function __invoke(): array
+    {
+        return [
+            'dependencies' =&gt; $this-&gt;getDependencies(),
+        ];
+    }
+
+    public function getDependencies(): array
+    {
+        return [
+            // no constructor arguments → the container can just `new` it
+            'invokables' =&gt; [
+                Handler\PingHandler::class =&gt; Handler\PingHandler::class,
+            ],
+            // has dependencies → build via this factory
+            'factories'  =&gt; [
+                Handler\ProductListHandler::class =&gt; Handler\ProductListHandlerFactory::class,
+                Repository\ProductRepository::class =&gt; Repository\ProductRepositoryFactory::class,
+            ],
+        ];
+    }
+}</code></pre>
+</figure>
+
+<p>The pattern is always the same triangle: <strong>service ← factory ← ConfigProvider entry</strong>. Learn it once here; sections 12–14 just repeat it for a repository, a database connection, a mailer, and a payment client.</p>
+
+<div class="note">
+  <span class="tag">Less boilerplate, when you want it</span>
+  <p>Writing a factory per service is the explicit default, but laminas-servicemanager also ships <code>ReflectionBasedAbstractFactory</code>, which inspects a constructor and resolves type-hinted dependencies automatically — register it as the factory for a service and skip writing one by hand (<code>Handler\ProductListHandler::class =&gt; ReflectionBasedAbstractFactory::class</code>). Handy in development; explicit factories are cheaper at runtime and easier to debug.</p>
+</div>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>A vending machine for objects.</strong> You press a button labelled with a service name (<code>$container-&gt;get(ProductRepository::class)</code>) and a fully-assembled instance drops out. You don't see — or care — how it was put together. The factories are the restocking instructions taped inside the machine, and each module's ConfigProvider is the sheet telling the machine which instructions go with which button. One more property: it's a vending machine with a memory — ask for the same service twice and you get the <em>same instance</em> back, not a fresh one.</p>
+</div>
+
+<span class="f-label">Use case</span>
+<p>Swap the in-memory <code>ProductRepository</code> for a PDO-backed one (§13). Handlers don't change at all — they just declare they need a repository. You change <em>one factory</em> to build the PDO version, and every consumer gets it. That isolation is what the container buys you.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="configuration">
+<h2><span class="sec-n">11</span>Configuration</h2>
+
+<span class="f-label">What</span>
+<p>Mezzio configuration is one big PHP array, assembled at startup by the <strong>ConfigAggregator</strong> in <code>config/config.php</code>. It merges, in order: each module's ConfigProvider, then every file in <code>config/autoload/</code> matching <code>*.global.php</code>, then every <code>*.local.php</code>. The merged array is itself available from the container as the service named <code>'config'</code>.</p>
+
+<span class="f-label">Why</span>
+<p>Different settings have different owners: a module ships defaults, your project sets shared values, and each machine (your laptop, CI, production) has its own secrets. One file can't serve all three. The aggregator lets each layer contribute a fragment, with a simple rule — <strong>later wins</strong> — deciding conflicts. That's also why <code>*.local.php</code> files are git-ignored: secrets stay on the machine they belong to, and they override whatever the committed files say.</p>
+
+<span class="f-label">How</span>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/config.php (abridged)</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+use Laminas\ConfigAggregator\ConfigAggregator;
+use Laminas\ConfigAggregator\PhpFileProvider;
+
+$cacheConfig = ['config_cache_path' =&gt; 'data/cache/config-cache.php'];
+
+$aggregator = new ConfigAggregator([
+    // framework + component defaults (each is a ConfigProvider)
+    \Mezzio\ConfigProvider::class,
+    \Mezzio\Router\FastRouteRouter\ConfigProvider::class,
+
+    // your module
+    \App\ConfigProvider::class,
+
+    // project + machine config: globals first, locals last (locals win)
+    new PhpFileProvider(realpath(__DIR__) . '/autoload/{{,*.}global,{,*.}local}.php'),
+], $cacheConfig['config_cache_path']);
+
+return $aggregator-&gt;getMergedConfig();</code></pre>
+</figure>
+
+<p>A concrete override in action — a committed default and a git-ignored local secret:</p>
+
+<div class="tabs">
+  <div class="tab-row" role="tablist">
+    <button class="tab-btn" role="tab" aria-selected="true" type="button">database.global.php</button>
+    <button class="tab-btn" role="tab" aria-selected="false" type="button">database.local.php</button>
+    <button class="tab-btn" role="tab" aria-selected="false" type="button">merged result</button>
+  </div>
+  <div class="tab-panel active" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">config/autoload/database.global.php — committed</span><span class="grow"></span></div>
+    <pre><code class="language-php">return [
+    'db' =&gt; [
+        'dsn'      =&gt; 'sqlite:data/app.sqlite',
+        'username' =&gt; null,
+        'password' =&gt; null,
+    ],
+];</code></pre>
+    </figure>
+  </div>
+  <div class="tab-panel" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">config/autoload/database.local.php — git-ignored, per machine</span><span class="grow"></span></div>
+    <pre><code class="language-php">return [
+    'db' =&gt; [
+        'dsn'      =&gt; 'mysql:host=127.0.0.1;dbname=shop;charset=utf8mb4',
+        'username' =&gt; 'shop_app',
+        'password' =&gt; 'local-dev-password',
+    ],
+];</code></pre>
+    </figure>
+  </div>
+  <div class="tab-panel" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">$container-&gt;get('config')['db'] — what your code sees</span><span class="grow"></span></div>
+    <pre><code class="language-php">[
+    'dsn'      =&gt; 'mysql:host=127.0.0.1;dbname=shop;charset=utf8mb4', // local won
+    'username' =&gt; 'shop_app',
+    'password' =&gt; 'local-dev-password',
+]</code></pre>
+    </figure>
+  </div>
+</div>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>Layered transparency sheets.</strong> Picture each config source as a transparent sheet with some cells filled in, stacked on an overhead projector in aggregation order: framework defaults on the bottom, your module's sheet next, <code>*.global.php</code> sheets above that, <code>*.local.php</code> sheets on top. Looking down through the stack, you see the topmost value written in each cell — everything underneath still exists, it's just overridden. Adding a machine-specific tweak is laying one more small sheet on top, never editing the sheets below.</p>
+</div>
+
+<span class="f-label">Use case</span>
+<p>Your app needs a Stripe key. You commit <code>stripe.global.php</code> with <code>'secret_key' =&gt; ''</code> (documents the shape, safe placeholder), and on each environment create <code>stripe.local.php</code> with the real key for that environment. Production and your laptop run identical code with different top sheets — no <code>if ($env === 'prod')</code> anywhere. Section 14 builds this exact setup.</p>
+
+<div class="warn">
+  <span class="tag">Config caching gotcha</span>
+  <p>When <code>ConfigAggregator::ENABLE_CACHE</code> is on (production mode), the merged array is written to <code>data/cache/config-cache.php</code> and config files are never re-read. If a config change mysteriously doesn't apply, run <code>php bin/clear-config-cache.php</code>. In development mode (<code>composer development-enable</code>) caching is off and this never bites.</p>
+</div>
+</section>
+<!-- ================================================================ -->
+<section class="doc" id="worked-example">
+<h2><span class="sec-n">12</span>Worked example — a Products API, end to end</h2>
+
+<p>Time to assemble everything: you'll build a small products API with three endpoints, using every concept from sections 04–11 in its proper place.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Method + path</th><th>Does</th><th>Handler</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/products</code></td><td>List all products</td><td><code>ProductListHandler</code></td></tr>
+    <tr><td><code>GET /api/products/{id}</code></td><td>Fetch one product (404 if missing)</td><td><code>ProductHandler</code></td></tr>
+    <tr><td><code>POST /api/products</code></td><td>Create a product from a JSON body</td><td><code>CreateProductHandler</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The repository starts as a simple in-memory class so the whole thing runs with zero setup — section 13 swaps its internals for a real database <em>without touching the handlers</em>, which is rather the point of the container.</p>
+
+<ol class="steps">
+
+<li>
+<h4>Pipe JSON body parsing (middleware)</h4>
+<p><code>POST</code> will receive JSON, so install Mezzio's body-parsing middleware and pipe it before routing — one line in <code>pipeline.php</code>, and every handler in the app can read JSON bodies:</p>
+<figure class="codeblock term">
+<pre><code class="language-bash">composer require mezzio/mezzio-helpers</code></pre>
+</figure>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/pipeline.php (add one line)</span><span class="grow"></span></div>
+<pre><code class="language-php">use Mezzio\Helper\BodyParams\BodyParamsMiddleware;
+
+// ...
+$app-&gt;pipe(ServerUrlMiddleware::class);
+$app-&gt;pipe(BodyParamsMiddleware::class);   // ← add this line
+$app-&gt;pipe(RouteMiddleware::class);</code></pre>
+</figure>
+</li>
+
+<li>
+<h4>Create the service — <code>ProductRepository</code></h4>
+<p>The business logic lives in a plain class with no framework coupling at all:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Repository/ProductRepository.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+class ProductRepository
+{
+    /** @var array&lt;int, array{id: int, name: string, price: float}&gt; */
+    private array $products = [
+        1 =&gt; ['id' =&gt; 1, 'name' =&gt; 'Mechanical keyboard', 'price' =&gt; 129.00],
+        2 =&gt; ['id' =&gt; 2, 'name' =&gt; 'USB-C dock',          'price' =&gt; 89.50],
+    ];
+
+    /** @return list&lt;array&gt; */
+    public function all(): array
+    {
+        return array_values($this-&gt;products);
+    }
+
+    public function find(int $id): ?array
+    {
+        return $this-&gt;products[$id] ?? null;
+    }
+
+    public function create(string $name, float $price): array
+    {
+        $id = $this-&gt;products === [] ? 1 : max(array_keys($this-&gt;products)) + 1;
+        $product = ['id' =&gt; $id, 'name' =&gt; $name, 'price' =&gt; $price];
+        $this-&gt;products[$id] = $product;
+
+        return $product;
+    }
+}</code></pre>
+</figure>
+</li>
+
+<li>
+<h4>Write the handlers</h4>
+<p>Three small classes, one per endpoint. Each declares the repository in its constructor and does exactly one job:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/ProductListHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Repository\ProductRepository;
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class ProductListHandler implements RequestHandlerInterface
+{
+    public function __construct(private readonly ProductRepository $products)
+    {
+    }
+
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        return new JsonResponse(['products' =&gt; $this-&gt;products-&gt;all()]);
+    }
+}</code></pre>
+</figure>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/ProductHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Repository\ProductRepository;
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class ProductHandler implements RequestHandlerInterface
+{
+    public function __construct(private readonly ProductRepository $products)
+    {
+    }
+
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        $id      = (int) $request-&gt;getAttribute('id');   // from {id:\d+} in the route
+        $product = $this-&gt;products-&gt;find($id);
+
+        if ($product === null) {
+            return new JsonResponse(['error' =&gt; 'Product not found'], 404);
+        }
+
+        return new JsonResponse($product);
+    }
+}</code></pre>
+</figure>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/CreateProductHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Repository\ProductRepository;
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class CreateProductHandler implements RequestHandlerInterface
+{
+    public function __construct(private readonly ProductRepository $products)
+    {
+    }
+
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        // BodyParamsMiddleware (step 1) already parsed the JSON body
+        $body  = (array) $request-&gt;getParsedBody();
+        $name  = trim((string) ($body['name'] ?? ''));
+        $price = $body['price'] ?? null;
+
+        if ($name === '' || ! is_numeric($price)) {
+            return new JsonResponse([
+                'error' =&gt; 'Fields "name" (string) and "price" (number) are required',
+            ], 422);
+        }
+
+        $product = $this-&gt;products-&gt;create($name, (float) $price);
+
+        return new JsonResponse($product, 201);
+    }
+}</code></pre>
+</figure>
+</li>
+
+<li>
+<h4>Wire the factories</h4>
+<p>The repository needs no dependencies yet, so it can be an invokable. Each handler needs the repository, so each gets a one-line factory. They're so similar we'll show one — create the other two the same way (<code>ProductHandlerFactory</code>, <code>CreateProductHandlerFactory</code>):</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/ProductListHandlerFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Repository\ProductRepository;
+use Psr\Container\ContainerInterface;
+
+final class ProductListHandlerFactory
+{
+    public function __invoke(ContainerInterface $container): ProductListHandler
+    {
+        return new ProductListHandler($container-&gt;get(ProductRepository::class));
+    }
+}</code></pre>
+</figure>
+</li>
+
+<li>
+<h4>Register everything in the ConfigProvider</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php — getDependencies()</span><span class="grow"></span></div>
+<pre><code class="language-php">public function getDependencies(): array
+{
+    return [
+        'invokables' =&gt; [
+            Handler\PingHandler::class =&gt; Handler\PingHandler::class,
+            Repository\ProductRepository::class =&gt; Repository\ProductRepository::class,
+        ],
+        'factories' =&gt; [
+            Handler\ProductListHandler::class   =&gt; Handler\ProductListHandlerFactory::class,
+            Handler\ProductHandler::class       =&gt; Handler\ProductHandlerFactory::class,
+            Handler\CreateProductHandler::class =&gt; Handler\CreateProductHandlerFactory::class,
+        ],
+    ];
+}</code></pre>
+</figure>
+<div class="warn">
+  <span class="tag">Heads-up</span>
+  <p>Registering the repository as an <em>invokable</em> also makes it a shared single instance — both handlers get the same object, so a product created via <code>POST</code> is visible to a following <code>GET</code> within the same request cycle. (Being in-memory, data still resets between requests; §13 fixes that with a real database.)</p>
+</div>
+</li>
+
+<li>
+<h4>Add the routes</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/routes.php</span><span class="grow"></span></div>
+<pre><code class="language-php">$app-&gt;get('/api/products', App\Handler\ProductListHandler::class, 'products.list');
+$app-&gt;get('/api/products/{id:\d+}', App\Handler\ProductHandler::class, 'products.get');
+$app-&gt;post('/api/products', App\Handler\CreateProductHandler::class, 'products.create');</code></pre>
+</figure>
+</li>
+
+<li>
+<h4>Test it</h4>
+<figure class="codeblock term">
+<pre><code class="language-bash">composer serve   # if it isn't already running
+
+curl http://localhost:8080/api/products
+# {"products":[{"id":1,"name":"Mechanical keyboard","price":129},{"id":2,...}]}
+
+curl http://localhost:8080/api/products/1
+# {"id":1,"name":"Mechanical keyboard","price":129}
+
+curl http://localhost:8080/api/products/999
+# {"error":"Product not found"}            ← 404
+
+curl -X POST http://localhost:8080/api/products \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"Webcam","price":59.99}'
+# {"id":3,"name":"Webcam","price":59.99}   ← 201</code></pre>
+</figure>
+</li>
+
+</ol>
+
+<p>Take stock of what each concept did: <strong>piping</strong> gave every endpoint JSON parsing (step 1); a <strong>service</strong> holds the business logic (step 2); <strong>handlers</strong> are the destinations (step 3); <strong>factories + ConfigProvider</strong> wired the dependency graph (steps 4–5); <strong>routing</strong> exposed it all as URLs (step 6). That's the entire Mezzio development loop — every feature you ever add is some subset of these steps.</p>
+</section>
+<!-- ================================================================ -->
+<section class="doc" id="database">
+<h2><span class="sec-n">13</span>Setting up a database</h2>
+
+<p>The in-memory repository forgets everything between requests. Let's give it PDO — and notice that this is <em>not a new concept</em>: a PDO connection is just another service, built by a factory, configured via <code>config/autoload/</code>. The triangle from §10 again.</p>
+
+<h3>1. Connection config in <code>config/autoload/</code></h3>
+<p>SQLite keeps this guide dependency-free; the same shape works for MySQL or Postgres (that's what the <code>.local.php</code> override in §11 showed):</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/autoload/database.global.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+return [
+    'db' =&gt; [
+        'dsn'      =&gt; 'sqlite:' . getcwd() . '/data/app.sqlite',
+        'username' =&gt; null,
+        'password' =&gt; null,
+    ],
+];</code></pre>
+</figure>
+
+<h3>2. A factory that builds the PDO service</h3>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Database/PdoFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Database;
+
+use PDO;
+use Psr\Container\ContainerInterface;
+
+final class PdoFactory
+{
+    public function __invoke(ContainerInterface $container): PDO
+    {
+        $config = $container-&gt;get('config')['db'];   // the merged config array (§11)
+
+        return new PDO(
+            $config['dsn'],
+            $config['username'],
+            $config['password'],
+            [
+                PDO::ATTR_ERRMODE            =&gt; PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE =&gt; PDO::FETCH_ASSOC,
+            ]
+        );
+    }
+}</code></pre>
+</figure>
+
+<h3>3. Rebuild the repository on top of PDO</h3>
+<p>Same public methods — <code>all()</code>, <code>find()</code>, <code>create()</code> — new internals. The handlers never learn the difference:</p>
+<details class="code-fold">
+<summary>src/App/src/Repository/ProductRepository.php — PDO version (click to expand)</summary>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Repository/ProductRepository.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+use PDO;
+
+class ProductRepository
+{
+    public function __construct(private readonly PDO $db)
+    {
+    }
+
+    /** @return list&lt;array&gt; */
+    public function all(): array
+    {
+        return $this-&gt;db
+            -&gt;query('SELECT id, name, price FROM products ORDER BY id')
+            -&gt;fetchAll();
+    }
+
+    public function find(int $id): ?array
+    {
+        $stmt = $this-&gt;db-&gt;prepare('SELECT id, name, price FROM products WHERE id = :id');
+        $stmt-&gt;execute(['id' =&gt; $id]);
+        $row = $stmt-&gt;fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    public function create(string $name, float $price): array
+    {
+        $stmt = $this-&gt;db-&gt;prepare('INSERT INTO products (name, price) VALUES (:name, :price)');
+        $stmt-&gt;execute(['name' =&gt; $name, 'price' =&gt; $price]);
+
+        return [
+            'id'    =&gt; (int) $this-&gt;db-&gt;lastInsertId(),
+            'name'  =&gt; $name,
+            'price' =&gt; $price,
+        ];
+    }
+}</code></pre>
+</figure>
+</details>
+
+<h3>4. Update the wiring</h3>
+<p>The repository now has a dependency, so it graduates from <code>invokables</code> to <code>factories</code>:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php — getDependencies()</span><span class="grow"></span></div>
+<pre><code class="language-php">'factories' =&gt; [
+    PDO::class                          =&gt; Database\PdoFactory::class,
+    Repository\ProductRepository::class =&gt; Repository\ProductRepositoryFactory::class,
+    // ... handler factories unchanged
+],</code></pre>
+</figure>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Repository/ProductRepositoryFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+use PDO;
+use Psr\Container\ContainerInterface;
+
+final class ProductRepositoryFactory
+{
+    public function __invoke(ContainerInterface $container): ProductRepository
+    {
+        return new ProductRepository($container-&gt;get(PDO::class));
+    }
+}</code></pre>
+</figure>
+
+<p>Create the table once (<code>sqlite3 data/app.sqlite</code>, or a migration tool later):</p>
+<figure class="codeblock term">
+<pre><code class="language-bash">sqlite3 data/app.sqlite \
+  'CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL);'</code></pre>
+</figure>
+
+<p>Re-run the curls from §12 step 7 — identical API, but now <code>POST</code>ed products survive a restart. <strong>No handler changed, no route changed</strong>: one factory and one config file brought in a database.</p>
+
+<div class="note">
+  <span class="tag">Beyond raw PDO</span>
+  <p>The same pattern carries you to any data layer: <code>laminas-db</code>, Doctrine DBAL, or a full ORM. Whatever you pick, it enters the app the same door — a factory registered in a ConfigProvider, configured from <code>config/autoload/</code>.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="services">
+<h2><span class="sec-n">14</span>Third-party services — same pattern, every time</h2>
+
+<p>Here's the payoff of learning the factory triangle once: <strong>every external service joins your app the exact same way.</strong> An email provider and a payment provider look wildly different in their docs — in Mezzio they're the same four moves:</p>
+<ol>
+  <li>Put credentials in <code>config/autoload/*.local.php</code> (git-ignored).</li>
+  <li>Write a factory that reads config and builds the SDK client.</li>
+  <li>Register it in the ConfigProvider.</li>
+  <li>Inject it into whichever handler needs it.</li>
+</ol>
+
+<h3>An email service</h3>
+<div class="tabs">
+  <div class="tab-row" role="tablist">
+    <button class="tab-btn" role="tab" aria-selected="true" type="button">1 · config</button>
+    <button class="tab-btn" role="tab" aria-selected="false" type="button">2 · factory</button>
+    <button class="tab-btn" role="tab" aria-selected="false" type="button">3 · register</button>
+    <button class="tab-btn" role="tab" aria-selected="false" type="button">4 · inject</button>
+  </div>
+  <div class="tab-panel active" role="tabpanel">
+    <figure class="codeblock term">
+    <pre><code class="language-bash">composer require symfony/mailer</code></pre>
+    </figure>
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">config/autoload/mail.local.php — git-ignored</span><span class="grow"></span></div>
+    <pre><code class="language-php">return [
+    'mail' =&gt; [
+        'dsn'  =&gt; 'smtp://user:pass@smtp.mailprovider.com:587',
+        'from' =&gt; 'orders@example.com',
+    ],
+];</code></pre>
+    </figure>
+  </div>
+  <div class="tab-panel" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">src/App/src/Mail/MailerFactory.php</span><span class="grow"></span></div>
+    <pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Mail;
+
+use Psr\Container\ContainerInterface;
+use Symfony\Component\Mailer\Mailer;
+use Symfony\Component\Mailer\Transport;
+
+final class MailerFactory
+{
+    public function __invoke(ContainerInterface $container): Mailer
+    {
+        $config = $container-&gt;get('config')['mail'];
+
+        return new Mailer(Transport::fromDsn($config['dsn']));
+    }
+}</code></pre>
+    </figure>
+  </div>
+  <div class="tab-panel" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php</span><span class="grow"></span></div>
+    <pre><code class="language-php">'factories' =&gt; [
+    \Symfony\Component\Mailer\Mailer::class =&gt; Mail\MailerFactory::class,
+    // ...
+],</code></pre>
+    </figure>
+  </div>
+  <div class="tab-panel" role="tabpanel">
+    <figure class="codeblock">
+    <div class="cb-head"><span class="cb-file">In a handler (e.g. after creating an order)</span><span class="grow"></span></div>
+    <pre><code class="language-php">public function __construct(
+    private readonly OrderRepository $orders,
+    private readonly Mailer $mailer,          // built by MailerFactory
+) {
+}
+
+public function handle(ServerRequestInterface $request): ResponseInterface
+{
+    $order = $this-&gt;orders-&gt;create(/* ... */);
+
+    $this-&gt;mailer-&gt;send(
+        (new Email())
+            -&gt;to($order['customer_email'])
+            -&gt;from('orders@example.com')
+            -&gt;subject('Order confirmed')
+            -&gt;text('Thanks! Your order #' . $order['id'] . ' is confirmed.')
+    );
+
+    return new JsonResponse($order, 201);
+}</code></pre>
+    </figure>
+  </div>
+</div>
+
+<h3>A payment service</h3>
+<p>Different SDK, identical choreography — config, factory, register, inject:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/autoload/stripe.local.php — git-ignored</span><span class="grow"></span></div>
+<pre><code class="language-php">return [
+    'stripe' =&gt; [
+        'secret_key' =&gt; 'sk_test_your_key_here',
+    ],
+];</code></pre>
+</figure>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Payment/StripeClientFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Payment;
+
+use Psr\Container\ContainerInterface;
+use Stripe\StripeClient;
+
+final class StripeClientFactory
+{
+    public function __invoke(ContainerInterface $container): StripeClient
+    {
+        $config = $container-&gt;get('config')['stripe'];
+
+        return new StripeClient($config['secret_key']);
+    }
+}</code></pre>
+</figure>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">A checkout handler using it</span><span class="grow"></span></div>
+<pre><code class="language-php">final class CheckoutHandler implements RequestHandlerInterface
+{
+    public function __construct(private readonly StripeClient $stripe)
+    {
+    }
+
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = (array) $request-&gt;getParsedBody();
+
+        $intent = $this-&gt;stripe-&gt;paymentIntents-&gt;create([
+            'amount'   =&gt; (int) $body['amount'],   // cents
+            'currency' =&gt; 'usd',
+        ]);
+
+        return new JsonResponse(['client_secret' =&gt; $intent-&gt;client_secret], 201);
+    }
+}</code></pre>
+</figure>
+
+<p>PDO, a mailer, Stripe — three integrations, <strong>one repeatable pattern</strong>. When you meet your next SDK (S3, Twilio, Redis…), you already know exactly where each piece goes: keys in <code>autoload/*.local.php</code>, construction in a factory, registration in the ConfigProvider, consumption via a constructor.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="errors">
+<h2><span class="sec-n">15</span>Error handling &amp; basic troubleshooting</h2>
+
+<p>Look back at the pipeline: <code>ErrorHandler</code> is piped <em>first</em>, which makes it the outermost doll — any exception thrown by anything deeper is caught there and turned into a response instead of a white screen.</p>
+
+<h3>Development vs production</h3>
+<ul>
+  <li><strong>Development</strong> (<code>composer development-enable</code>): the Whoops error page shows the exception, stack trace, and request details. Loud and detailed — exactly what you want locally.</li>
+  <li><strong>Production</strong> (<code>composer development-disable</code>): a plain 500 with no internals leaked. Attach a listener to log the real exception:</li>
+</ul>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">A delegator/factory can attach listeners to ErrorHandler</span><span class="grow"></span></div>
+<pre><code class="language-php">use Laminas\Stratigility\Middleware\ErrorHandler;
+
+$errorHandler = $container-&gt;get(ErrorHandler::class);
+$errorHandler-&gt;attachListener(
+    function (Throwable $error, $request, $response) use ($logger): void {
+        $logger-&gt;error($error-&gt;getMessage(), [
+            'uri'   =&gt; (string) $request-&gt;getUri(),
+            'trace' =&gt; $error-&gt;getTraceAsString(),
+        ]);
+    }
+);</code></pre>
+</figure>
+
+<h3>JSON errors for a JSON API</h3>
+<p>By default, errors and 404s render as HTML — wrong dialect for an API. The <code>mezzio/mezzio-problem-details</code> package speaks <a href="https://datatracker.ietf.org/doc/html/rfc7807" target="_blank" rel="noopener">RFC 7807</a> ("Problem Details for HTTP APIs"):</p>
+<figure class="codeblock term">
+<pre><code class="language-bash">composer require mezzio/mezzio-problem-details</code></pre>
+</figure>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/pipeline.php — swap the error layer for the API-flavoured one</span><span class="grow"></span></div>
+<pre><code class="language-php">use Mezzio\ProblemDetails\ProblemDetailsMiddleware;
+use Mezzio\ProblemDetails\ProblemDetailsNotFoundHandler;
+
+return function (Application $app, MiddlewareFactory $factory, ContainerInterface $container): void {
+    $app-&gt;pipe(ProblemDetailsMiddleware::class);   // exceptions → application/problem+json
+    // ... rest of the pipeline unchanged ...
+    $app-&gt;pipe(ProblemDetailsNotFoundHandler::class);  // 404s → problem+json too
+};</code></pre>
+</figure>
+<p>Now an unmatched route answers in your API's native tongue:</p>
+<figure class="codeblock">
+<pre><code class="language-json">{
+    "title": "Not Found",
+    "type": "https://httpstatus.es/404",
+    "status": 404,
+    "detail": "Cannot POST https://localhost:8080/api/nope!"
+}</code></pre>
+</figure>
+
+<h3>Troubleshooting checklist</h3>
+<p>The five issues every Mezzio newcomer hits, and the fix for each:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Symptom</th><th>Likely cause &amp; fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Change to config/routes seems ignored</td>
+      <td>Stale config cache — run <code>php bin/clear-config-cache.php</code>, and use <code>composer development-enable</code> locally</td>
+    </tr>
+    <tr>
+      <td><code>ServiceNotFoundException: Unable to resolve service "App\Handler\FooHandler"</code></td>
+      <td>You added a handler/service but didn't register it in <code>ConfigProvider::getDependencies()</code> — add it to <code>factories</code> or <code>invokables</code></td>
+    </tr>
+    <tr>
+      <td>404 on a route you defined</td>
+      <td>Typo in the path, wrong HTTP method, or a regex constraint like <code>{id:\d+}</code> rejecting your test URL — re-read the route line in <code>routes.php</code></td>
+    </tr>
+    <tr>
+      <td>405 instead of the expected response</td>
+      <td>The path matched but the method didn't — you defined <code>get()</code> and called <code>POST</code> (or vice versa)</td>
+    </tr>
+    <tr>
+      <td><code>getParsedBody()</code> returns <code>null</code> for JSON</td>
+      <td><code>BodyParamsMiddleware</code> isn't piped (§12 step 1), or the request lacks <code>Content-Type: application/json</code></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="testing">
+<h2><span class="sec-n">16</span>Testing the API</h2>
+
+<h3>curl — the whole surface in one script</h3>
+<p>You've been testing with curl all along; here's the full suite for the Products API, including the failure paths. <code>-i</code> shows status line and headers:</p>
+
+<figure class="codeblock term">
+<pre><code class="language-bash"># happy paths ------------------------------------------------------
+curl -i http://localhost:8080/api/products                # 200, list
+curl -i http://localhost:8080/api/products/1              # 200, one product
+
+curl -i -X POST http://localhost:8080/api/products \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"Webcam","price":59.99}'                 # 201, created
+
+# failure paths — a good API fails predictably ---------------------
+curl -i http://localhost:8080/api/products/999            # 404, not found
+curl -i http://localhost:8080/api/products/abc            # 404, {id:\d+} rejected it
+
+curl -i -X POST http://localhost:8080/api/products \
+     -H 'Content-Type: application/json' \
+     -d '{"name":""}'                                     # 422, validation error
+
+curl -i -X DELETE http://localhost:8080/api/products/1    # 405, no DELETE route</code></pre>
+</figure>
+
+<h3>Postman (or Insomnia / Bruno)</h3>
+<p>For anything beyond quick checks, a request client earns its keep:</p>
+<ol>
+  <li>Create a collection <strong>"Mezzio Products API"</strong> with a collection variable <code>base_url = http://localhost:8080</code>.</li>
+  <li>Add one saved request per route: <code>GET {{base_url}}/api/products</code>, <code>GET {{base_url}}/api/products/1</code>, <code>POST {{base_url}}/api/products</code>.</li>
+  <li>For the POST request: <em>Body → raw → JSON</em>, paste <code>{"name": "Webcam", "price": 59.99}</code> — Postman sets the <code>Content-Type</code> header for you.</li>
+  <li>Assert behaviour in the request's <em>Scripts → Post-response</em> tab so the whole collection can run as a regression suite:</li>
+</ol>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">Postman post-response script</span><span class="grow"></span></div>
+<pre><code class="language-javascript">pm.test("status is 201", () =&gt; pm.response.to.have.status(201));
+pm.test("returns the new product", () =&gt; {
+    const body = pm.response.json();
+    pm.expect(body).to.have.property("id");
+    pm.expect(body.name).to.eql("Webcam");
+});</code></pre>
+</figure>
+
+<div class="note">
+  <span class="tag">Automated tests</span>
+  <p>The skeleton ships PHPUnit and a <code>test/</code> directory. Because handlers are plain classes, unit-testing one is just: construct it (with a stub repository), pass a <code>ServerRequest</code>, assert on the <code>JsonResponse</code>. Run everything with <code>composer test</code>.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="next-steps">
+<h2><span class="sec-n">17</span>Next steps</h2>
+
+<p>You've gone from zero to a Mezzio API with routing, middleware, DI, a database, third-party services, and API-shaped error handling. You now hold the complete mental toolkit: <strong>the pipeline</strong> (everything is a layer), <strong>the triangle</strong> (service ← factory ← ConfigProvider), and <strong>the merge</strong> (layered config, local wins). Everything below is those three ideas applied again.</p>
+
+<h3>Where to go from here</h3>
+<ul>
+  <li><a href="https://docs.mezzio.dev/mezzio/" target="_blank" rel="noopener"><strong>Official Mezzio documentation</strong></a> — the reference for everything this guide compressed; the "Cookbook" section is particularly practical.</li>
+  <li><a href="https://docs.mezzio.dev/mezzio/v3/features/container/intro/" target="_blank" rel="noopener"><strong>Container deep dive</strong></a> — delegators, lazy services, and the other laminas-servicemanager tools beyond factories and invokables.</li>
+  <li><strong>Modular structure</strong> — when the app outgrows one <code>src/App</code> module, split it into modules (<code>src/User</code>, <code>src/Billing</code>…), each with its own ConfigProvider. You chose "flat" at install; "modular" is the same ideas, multiplied.</li>
+  <li><a href="https://docs.mezzio.dev/mezzio-authentication/" target="_blank" rel="noopener"><strong>mezzio-authentication</strong></a> — session, basic-auth, and OAuth2 adapters, delivered (of course) as pipeline middleware.</li>
+  <li><a href="https://docs.mezzio.dev/mezzio-swoole/" target="_blank" rel="noopener"><strong>mezzio-swoole</strong></a> — run the same app on Swoole/OpenSwoole as a long-lived async server instead of PHP-FPM; big throughput wins, zero application rewrites.</li>
+  <li><a href="https://docs.laminas.dev/laminas-eventmanager/" target="_blank" rel="noopener"><strong>Event dispatch (PSR-14)</strong></a> — decouple side-effects ("order created → send email") from handlers using an event dispatcher.</li>
+  <li><a href="https://docs.mezzio.dev/mezzio/v3/features/template/intro/" target="_blank" rel="noopener"><strong>Templating</strong></a> — if this API grows HTML pages, add Twig or laminas-view; rendered templates are just another way for a handler to build its response body.</li>
+</ul>
+
+<p>Happy piping. <span aria-hidden="true">🔧</span></p>
+</section>
+
+<footer class="foot">
+  <p>Built as a quick-start companion to the <a href="https://docs.mezzio.dev" target="_blank" rel="noopener">official Mezzio documentation</a>. Mezzio is an open-source project of the Laminas Foundation; this guide is unofficial and unaffiliated. Code samples target Mezzio 3.x on PHP 8.1+.</p>
+</footer>
+
+</div><!-- /content-inner -->
+</main>
+</div><!-- /shell -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="assets/js/main.js"></script>
+</body>
+</html>
