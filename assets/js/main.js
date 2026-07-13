@@ -9,6 +9,28 @@
     });
   }
 
+  /* highlight.js lexes PHP #[Attribute] lines as comments; give them their
+     own colour so mapping attributes don't read as commented-out code */
+  document.querySelectorAll("code.language-php .hljs-comment").forEach(function (sp) {
+    var t = sp.textContent;
+    if (t.indexOf("#[") !== 0) return;
+    var idx = t.indexOf("//");
+    var attr = idx === -1 ? t : t.slice(0, idx);
+    var rest = idx === -1 ? "" : t.slice(idx);
+    sp.textContent = "";
+    sp.classList.remove("hljs-comment");
+    var a = document.createElement("span");
+    a.className = "php-attr";
+    a.textContent = attr;
+    sp.appendChild(a);
+    if (rest) {
+      var c = document.createElement("span");
+      c.className = "hljs-comment";
+      c.textContent = rest;
+      sp.appendChild(c);
+    }
+  });
+
   /* ---------- Mermaid ---------- */
   if (window.mermaid) {
     window.mermaid.initialize({

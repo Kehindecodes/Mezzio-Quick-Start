@@ -570,6 +570,9 @@ details.code-fold[open] > .codeblock { margin-top: 0; border-radius: 0 0 10px 10
 .hljs-operator, .hljs-punctuation { color: #9fb8bc; }
 .hljs-params { color: #d7e4e4; }
 
+/* PHP #[Attributes] — re-lexed out of hljs comments by main.js */
+.php-attr { color: #c792ce; font-style: normal; }
+
 /* terminal blocks */
 .codeblock.term pre code { color: #cfe8d8; }
 

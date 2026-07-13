@@ -51,15 +51,16 @@
     <ol>
       <li><a href="#worked-example"><span class="n">12</span>Worked example: Products API</a></li>
       <li><a href="#database"><span class="n">13</span>Setting up a database</a></li>
-      <li><a href="#services"><span class="n">14</span>Third-party services</a></li>
+      <li><a href="#doctrine"><span class="n">14</span>Doctrine ORM</a></li>
+      <li><a href="#services"><span class="n">15</span>Third-party services</a></li>
     </ol>
   </div>
   <div class="nav-group">
     <p class="group-label">Ship it</p>
     <ol>
-      <li><a href="#errors"><span class="n">15</span>Error handling</a></li>
-      <li><a href="#testing"><span class="n">16</span>Testing the API</a></li>
-      <li><a href="#next-steps"><span class="n">17</span>Next steps</a></li>
+      <li><a href="#errors"><span class="n">16</span>Error handling</a></li>
+      <li><a href="#testing"><span class="n">17</span>Testing the API</a></li>
+      <li><a href="#next-steps"><span class="n">18</span>Next steps</a></li>
     </ol>
   </div>
 </nav>
@@ -76,7 +77,7 @@
   <div class="hero-meta">
     <span>PHP 8.1+</span>
     <span>No Mezzio experience assumed</span>
-    <span>Read top to bottom · ~45 min</span>
+    <span>Read top to bottom · ~60 min</span>
     <span>You finish with a running API</span>
   </div>
 </div>
@@ -929,7 +930,7 @@ return $aggregator-&gt;getMergedConfig();</code></pre>
 </div>
 
 <span class="f-label">Use case</span>
-<p>Your app needs a Stripe key. You commit <code>stripe.global.php</code> with <code>'secret_key' =&gt; ''</code> (documents the shape, safe placeholder), and on each environment create <code>stripe.local.php</code> with the real key for that environment. Production and your laptop run identical code with different top sheets — no <code>if ($env === 'prod')</code> anywhere. Section 14 builds this exact setup.</p>
+<p>Your app needs a Stripe key. You commit <code>stripe.global.php</code> with <code>'secret_key' =&gt; ''</code> (documents the shape, safe placeholder), and on each environment create <code>stripe.local.php</code> with the real key for that environment. Production and your laptop run identical code with different top sheets — no <code>if ($env === 'prod')</code> anywhere. Section 15 builds this exact setup.</p>
 
 <div class="warn">
   <span class="tag">Config caching gotcha</span>
@@ -1351,48 +1352,363 @@ final class ProductRepositoryFactory
 
 <div class="note">
   <span class="tag">Beyond raw PDO</span>
-  <p>The same pattern carries you to any data layer: <code>laminas-db</code>, Doctrine DBAL, or a full ORM. Whatever you pick, it enters the app the same door — a factory registered in a ConfigProvider, configured from <code>config/autoload/</code>.</p>
+  <p>The same pattern carries you to any data layer: <code>laminas-db</code>, Doctrine DBAL, or a full ORM. Whatever you pick, it enters the app the same door — a factory registered in a ConfigProvider, configured from <code>config/autoload/</code>. The next section does exactly that with Doctrine ORM.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="doc" id="doctrine">
+<h2><span class="sec-n">14</span>Setting up Doctrine ORM</h2>
+
+<p>Raw PDO works, but you're hand-translating every row into an array and every array into SQL. <strong>Doctrine ORM</strong> automates that translation: database rows become PHP objects (<em>entities</em>), and changes to those objects become SQL. It enters the app through the exact same door as PDO did — config in <code>autoload/</code>, a factory, a ConfigProvider entry.</p>
+
+<h3>1. Install</h3>
+<figure class="codeblock term">
+<pre><code class="language-bash">composer require doctrine/orm doctrine/dbal symfony/cache</code></pre>
+</figure>
+<p>(<code>symfony/cache</code> gives Doctrine a PSR-6 cache for its metadata; any PSR-6 implementation works.)</p>
+
+<h3>2. Connection config in <code>config/autoload/</code></h3>
+<p>Same layering as §11: a committed global default (SQLite), overridable per machine by a git-ignored local file:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/autoload/doctrine.global.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+return [
+    'doctrine' =&gt; [
+        // passed straight to Doctrine DBAL
+        'connection' =&gt; [
+            'driver' =&gt; 'pdo_sqlite',
+            'path'   =&gt; 'data/app.sqlite',
+            // MySQL instead? Override in doctrine.local.php:
+            // 'driver' =&gt; 'pdo_mysql', 'host' =&gt; '127.0.0.1',
+            // 'dbname' =&gt; 'shop', 'user' =&gt; '...', 'password' =&gt; '...',
+        ],
+        // where your entity classes live
+        'entity_paths' =&gt; ['src/App/src/Entity'],
+        'dev_mode'     =&gt; true,
+    ],
+];</code></pre>
+</figure>
+
+<h3>3. A factory that builds the EntityManager</h3>
+<p>The <strong>EntityManager</strong> is Doctrine's front door — the service your code talks to for loading, tracking, and saving entities. One factory builds it from the config above:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Database/EntityManagerFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Database;
+
+use Doctrine\DBAL\DriverManager;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\ORMSetup;
+use Psr\Container\ContainerInterface;
+
+final class EntityManagerFactory
+{
+    public function __invoke(ContainerInterface $container): EntityManagerInterface
+    {
+        $config = $container-&gt;get('config')['doctrine'];
+
+        // "read #[ORM\...] attributes on classes found in these paths"
+        $ormConfig = ORMSetup::createAttributeMetadataConfiguration(
+            paths: $config['entity_paths'],
+            isDevMode: $config['dev_mode'],
+        );
+
+        $connection = DriverManager::getConnection($config['connection'], $ormConfig);
+
+        return new EntityManager($connection, $ormConfig);
+    }
+}</code></pre>
+</figure>
+<p>Register it in the ConfigProvider — code asks for the <em>interface</em>, the factory supplies the implementation:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php — getDependencies()</span><span class="grow"></span></div>
+<pre><code class="language-php">'factories' =&gt; [
+    \Doctrine\ORM\EntityManagerInterface::class =&gt; Database\EntityManagerFactory::class,
+    // ...
+],</code></pre>
+</figure>
+
+<h3>4. The entity — mapping a row to an object</h3>
+<p>An entity is a plain PHP class whose <strong>attributes declare, field by field, how a table row maps onto it</strong>. Here is the <code>products</code> table from §13 as an entity:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Entity/Product.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'products')]           // this class ↔ the products table
+class Product
+{
+    #[ORM\Id]                             // primary key...
+    #[ORM\GeneratedValue]                 // ...assigned by the database
+    #[ORM\Column(type: 'integer')]
+    private ?int $id = null;              // null until first flush()
+
+    #[ORM\Column(type: 'string', length: 120)]
+    private string $name;                 // name VARCHAR(120) ↔ $name
+
+    #[ORM\Column(type: 'float')]
+    private float $price;                 // price ↔ $price
+
+    public function __construct(string $name, float $price)
+    {
+        $this-&gt;name  = $name;
+        $this-&gt;price = $price;
+    }
+
+    public function getId(): ?int
+    {
+        return $this-&gt;id;
+    }
+
+    public function getName(): string
+    {
+        return $this-&gt;name;
+    }
+
+    public function getPrice(): float
+    {
+        return $this-&gt;price;
+    }
+
+    public function reprice(float $price): void
+    {
+        $this-&gt;price = $price;
+    }
+
+    /** @return array{id: int|null, name: string, price: float} */
+    public function toArray(): array
+    {
+        return ['id' =&gt; $this-&gt;id, 'name' =&gt; $this-&gt;name, 'price' =&gt; $this-&gt;price];
+    }
+}</code></pre>
+</figure>
+
+<p>Read the mapping as a two-column translation table:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Database side</th><th>Object side</th><th>Declared by</th></tr></thead>
+  <tbody>
+    <tr><td><code>products</code> table</td><td><code>Product</code> class</td><td><code>#[ORM\Table(name: 'products')]</code></td></tr>
+    <tr><td><code>id INTEGER PRIMARY KEY</code></td><td><code>$id</code></td><td><code>#[ORM\Id]</code> + <code>#[ORM\GeneratedValue]</code></td></tr>
+    <tr><td><code>name VARCHAR(120)</code></td><td><code>$name</code></td><td><code>#[ORM\Column(type: 'string', length: 120)]</code></td></tr>
+    <tr><td><code>price FLOAT</code></td><td><code>$price</code></td><td><code>#[ORM\Column(type: 'float')]</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="mental-model">
+  <span class="mm-tag">Mental model</span>
+  <p><strong>A column-header legend taped to a spreadsheet.</strong> A table row is a line in a spreadsheet; an object is the real thing it describes. The entity's attributes are the legend taped across the top: <code>#[ORM\Column(length: 120)]</code> above <code>$name</code> means "whatever sits in the <code>name</code> column belongs in this property." The EntityManager is the clerk who reads the legend fluently in both directions — <code>SELECT</code>ed rows come back to you as <code>Product</code> objects (Doctrine calls this <em>hydration</em>), and the changes you make to those objects get typed back up as <code>INSERT</code>/<code>UPDATE</code> statements. You never write the translation; you only keep the legend accurate.</p>
+</div>
+
+<h3>5. Create the schema from the mapping</h3>
+<p>Because the entity <em>is</em> the schema definition, Doctrine can create the table for you. Wire up its console once:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">bin/doctrine</span><span class="grow"></span></div>
+<pre><code class="language-php">#!/usr/bin/env php
+&lt;?php
+
+declare(strict_types=1);
+
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Tools\Console\ConsoleRunner;
+use Doctrine\ORM\Tools\Console\EntityManagerProvider\SingleManagerProvider;
+
+chdir(dirname(__DIR__));
+require 'vendor/autoload.php';
+
+$container = require 'config/container.php';
+
+ConsoleRunner::run(
+    new SingleManagerProvider($container-&gt;get(EntityManagerInterface::class))
+);</code></pre>
+</figure>
+<figure class="codeblock term">
+<pre><code class="language-bash">php bin/doctrine orm:validate-schema        # sanity-check the mapping
+php bin/doctrine orm:schema-tool:create     # CREATE TABLE products (...)
+# after changing an entity during development:
+php bin/doctrine orm:schema-tool:update --force</code></pre>
+</figure>
+<div class="warn">
+  <span class="tag">Production note</span>
+  <p><code>schema-tool</code> is a development convenience. For production databases use <code>doctrine/migrations</code>, which turns each schema change into a reviewable, versioned migration file instead of an in-place <code>--force</code> update.</p>
+</div>
+
+<h3>6. Using it — the repository, Doctrine edition</h3>
+<p>Same trick as §13: the repository keeps its public methods and swaps its internals, so <strong>handlers, routes, and tests don't change at all</strong>. The three core EntityManager operations are all here — <code>find</code> (load by primary key), <code>persist</code> (start tracking a new object), <code>flush</code> (write every pending change as SQL):</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Repository/ProductRepository.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+use App\Entity\Product;
+use Doctrine\ORM\EntityManagerInterface;
+
+class ProductRepository
+{
+    public function __construct(private readonly EntityManagerInterface $em)
+    {
+    }
+
+    /** @return list&lt;array&gt; */
+    public function all(): array
+    {
+        $products = $this-&gt;em-&gt;getRepository(Product::class)
+            -&gt;findBy([], orderBy: ['id' =&gt; 'ASC']);
+
+        return array_map(
+            static fn (Product $p): array =&gt; $p-&gt;toArray(),
+            $products,
+        );
+    }
+
+    public function find(int $id): ?array
+    {
+        // rows in, objects out: $product is a hydrated Product or null
+        $product = $this-&gt;em-&gt;find(Product::class, $id);
+
+        return $product?-&gt;toArray();
+    }
+
+    public function create(string $name, float $price): array
+    {
+        $product = new Product($name, $price);
+
+        $this-&gt;em-&gt;persist($product);   // "start tracking this new object"
+        $this-&gt;em-&gt;flush();             // INSERT runs here; $id is now set
+
+        return $product-&gt;toArray();
+    }
+}</code></pre>
+</figure>
+<p>And the repository's factory now hands it the EntityManager instead of PDO:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Repository/ProductRepositoryFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">final class ProductRepositoryFactory
+{
+    public function __invoke(ContainerInterface $container): ProductRepository
+    {
+        return new ProductRepository(
+            $container-&gt;get(\Doctrine\ORM\EntityManagerInterface::class)
+        );
+    }
+}</code></pre>
+</figure>
+
+<p>Updating is where the ORM starts paying rent — no <code>UPDATE</code> statement in sight, just object changes and a <code>flush()</code>:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">e.g. inside an UpdateProductHandler</span><span class="grow"></span></div>
+<pre><code class="language-php">$product = $this-&gt;em-&gt;find(Product::class, $id);
+
+if ($product === null) {
+    return new JsonResponse(['error' =&gt; 'Product not found'], 404);
+}
+
+$product-&gt;reprice(79.00);   // just mutate the object...
+$this-&gt;em-&gt;flush();          // ...Doctrine diffs it and runs the UPDATE
+
+return new JsonResponse($product-&gt;toArray());</code></pre>
+</figure>
+
+<div class="note">
+  <span class="tag">Beyond the basics</span>
+  <p>Filtered queries use the same repository object: <code>$this-&gt;em-&gt;getRepository(Product::class)-&gt;findBy(['name' =&gt; 'Webcam'])</code>. For anything richer — joins, aggregates, pagination — Doctrine has DQL (SQL over entities: <code>SELECT p FROM App\Entity\Product p WHERE p.price &gt; :min</code>) and a fluent QueryBuilder. Relations (<code>#[ORM\OneToMany]</code>, <code>#[ORM\ManyToOne]</code>) are the next mapping attributes to learn — see the <a href="https://www.doctrine-project.org/projects/doctrine-orm/en/current/index.html" target="_blank" rel="noopener">Doctrine ORM docs</a>.</p>
 </div>
 </section>
 
 <!-- ================================================================ -->
 <section class="doc" id="services">
-<h2><span class="sec-n">14</span>Third-party services — same pattern, every time</h2>
+<h2><span class="sec-n">15</span>Third-party services — same pattern, every time</h2>
 
-<p>Here's the payoff of learning the factory triangle once: <strong>every external service joins your app the exact same way.</strong> An email provider and a payment provider look wildly different in their docs — in Mezzio they're the same four moves:</p>
+<p>Here's the payoff of learning the factory triangle once: <strong>every external service joins your app the exact same way.</strong> An email provider and a payment provider look wildly different in their docs — in Mezzio they're the same five moves:</p>
 <ol>
   <li>Put credentials in <code>config/autoload/*.local.php</code> (git-ignored).</li>
-  <li>Write a factory that reads config and builds the SDK client.</li>
+  <li>Write a small <strong>client class of your own</strong> that wraps the vendor SDK behind methods named after what <em>your app</em> does ("send an order confirmation", "take a payment").</li>
+  <li>Write a factory that reads config and assembles that client.</li>
   <li>Register it in the ConfigProvider.</li>
   <li>Inject it into whichever handler needs it.</li>
 </ol>
+<p>Move 2 is the one people skip — don't. If handlers use <code>StripeClient</code> directly, Stripe's API is smeared across your codebase; behind your own client class, swapping providers (or faking payments in tests) means changing <strong>one file</strong>.</p>
 
 <h3>An email service</h3>
-<div class="tabs">
-  <div class="tab-row" role="tablist">
-    <button class="tab-btn" role="tab" aria-selected="true" type="button">1 · config</button>
-    <button class="tab-btn" role="tab" aria-selected="false" type="button">2 · factory</button>
-    <button class="tab-btn" role="tab" aria-selected="false" type="button">3 · register</button>
-    <button class="tab-btn" role="tab" aria-selected="false" type="button">4 · inject</button>
-  </div>
-  <div class="tab-panel active" role="tabpanel">
-    <figure class="codeblock term">
-    <pre><code class="language-bash">composer require symfony/mailer</code></pre>
-    </figure>
-    <figure class="codeblock">
-    <div class="cb-head"><span class="cb-file">config/autoload/mail.local.php — git-ignored</span><span class="grow"></span></div>
-    <pre><code class="language-php">return [
+<figure class="codeblock term">
+<pre><code class="language-bash">composer require symfony/mailer</code></pre>
+</figure>
+
+<h4>1 · Credentials in config</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/autoload/mail.local.php — git-ignored</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+return [
     'mail' =&gt; [
         'dsn'  =&gt; 'smtp://user:pass@smtp.mailprovider.com:587',
         'from' =&gt; 'orders@example.com',
     ],
 ];</code></pre>
-    </figure>
-  </div>
-  <div class="tab-panel" role="tabpanel">
-    <figure class="codeblock">
-    <div class="cb-head"><span class="cb-file">src/App/src/Mail/MailerFactory.php</span><span class="grow"></span></div>
-    <pre><code class="language-php">&lt;?php
+</figure>
+
+<h4>2 · The client — your app's own mailer</h4>
+<p>This is the actual implementation: a class that owns the vendor objects (<code>Email</code>, <code>MailerInterface</code>) so nothing else has to know they exist. Its public method speaks your domain's language:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Mail/OrderMailer.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Mail;
+
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
+
+final class OrderMailer
+{
+    public function __construct(
+        private readonly MailerInterface $mailer,
+        private readonly string $from,
+    ) {
+    }
+
+    public function sendOrderConfirmation(string $to, int $orderId, float $total): void
+    {
+        $email = (new Email())
+            -&gt;from($this-&gt;from)
+            -&gt;to($to)
+            -&gt;subject(sprintf('Order #%d confirmed', $orderId))
+            -&gt;text(sprintf(
+                "Thanks for your order!\n\nOrder number: %d\nTotal: $%.2f\n",
+                $orderId,
+                $total,
+            ));
+
+        $this-&gt;mailer-&gt;send($email);
+    }
+}</code></pre>
+</figure>
+
+<h4>3 · The factory that assembles it</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Mail/OrderMailerFactory.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
 
 declare(strict_types=1);
 
@@ -1402,65 +1718,135 @@ use Psr\Container\ContainerInterface;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport;
 
-final class MailerFactory
+final class OrderMailerFactory
 {
-    public function __invoke(ContainerInterface $container): Mailer
+    public function __invoke(ContainerInterface $container): OrderMailer
     {
         $config = $container-&gt;get('config')['mail'];
 
-        return new Mailer(Transport::fromDsn($config['dsn']));
+        return new OrderMailer(
+            new Mailer(Transport::fromDsn($config['dsn'])),
+            $config['from'],
+        );
     }
 }</code></pre>
-    </figure>
-  </div>
-  <div class="tab-panel" role="tabpanel">
-    <figure class="codeblock">
-    <div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php</span><span class="grow"></span></div>
-    <pre><code class="language-php">'factories' =&gt; [
-    \Symfony\Component\Mailer\Mailer::class =&gt; Mail\MailerFactory::class,
+</figure>
+
+<h4>4 · Register it</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php — getDependencies()</span><span class="grow"></span></div>
+<pre><code class="language-php">'factories' =&gt; [
+    Mail\OrderMailer::class =&gt; Mail\OrderMailerFactory::class,
     // ...
 ],</code></pre>
-    </figure>
-  </div>
-  <div class="tab-panel" role="tabpanel">
-    <figure class="codeblock">
-    <div class="cb-head"><span class="cb-file">In a handler (e.g. after creating an order)</span><span class="grow"></span></div>
-    <pre><code class="language-php">public function __construct(
-    private readonly OrderRepository $orders,
-    private readonly Mailer $mailer,          // built by MailerFactory
-) {
-}
+</figure>
 
-public function handle(ServerRequestInterface $request): ResponseInterface
+<h4>5 · Inject and use it in a handler</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/CreateOrderHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Mail\OrderMailer;
+use App\Repository\OrderRepository;
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class CreateOrderHandler implements RequestHandlerInterface
 {
-    $order = $this-&gt;orders-&gt;create(/* ... */);
+    public function __construct(
+        private readonly OrderRepository $orders,
+        private readonly OrderMailer $mailer,
+    ) {
+    }
 
-    $this-&gt;mailer-&gt;send(
-        (new Email())
-            -&gt;to($order['customer_email'])
-            -&gt;from('orders@example.com')
-            -&gt;subject('Order confirmed')
-            -&gt;text('Thanks! Your order #' . $order['id'] . ' is confirmed.')
-    );
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        $body  = (array) $request-&gt;getParsedBody();
+        $order = $this-&gt;orders-&gt;create($body);
 
-    return new JsonResponse($order, 201);
+        $this-&gt;mailer-&gt;sendOrderConfirmation(
+            $order['customer_email'],
+            $order['id'],
+            $order['total'],
+        );
+
+        return new JsonResponse($order, 201);
+    }
 }</code></pre>
-    </figure>
-  </div>
-</div>
+</figure>
 
 <h3>A payment service</h3>
-<p>Different SDK, identical choreography — config, factory, register, inject:</p>
+<p>Different SDK, identical choreography. Move 2 again is the heart of it — a gateway class that wraps <code>StripeClient</code> and exposes exactly the two operations this app performs:</p>
+<figure class="codeblock term">
+<pre><code class="language-bash">composer require stripe/stripe-php</code></pre>
+</figure>
+
+<h4>1 · Credentials in config</h4>
 <figure class="codeblock">
 <div class="cb-head"><span class="cb-file">config/autoload/stripe.local.php — git-ignored</span><span class="grow"></span></div>
-<pre><code class="language-php">return [
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+return [
     'stripe' =&gt; [
         'secret_key' =&gt; 'sk_test_your_key_here',
     ],
 ];</code></pre>
 </figure>
+
+<h4>2 · The client — your payment gateway</h4>
 <figure class="codeblock">
-<div class="cb-head"><span class="cb-file">src/App/src/Payment/StripeClientFactory.php</span><span class="grow"></span></div>
+<div class="cb-head"><span class="cb-file">src/App/src/Payment/StripeGateway.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Payment;
+
+use Stripe\StripeClient;
+
+final class StripeGateway
+{
+    public function __construct(private readonly StripeClient $stripe)
+    {
+    }
+
+    /**
+     * Start a payment; returns what the frontend needs to complete it.
+     *
+     * @return array{id: string, client_secret: string, amount: int}
+     */
+    public function createPayment(int $amountInCents, string $currency = 'usd'): array
+    {
+        $intent = $this-&gt;stripe-&gt;paymentIntents-&gt;create([
+            'amount'   =&gt; $amountInCents,
+            'currency' =&gt; $currency,
+        ]);
+
+        return [
+            'id'            =&gt; $intent-&gt;id,
+            'client_secret' =&gt; $intent-&gt;client_secret,
+            'amount'        =&gt; $intent-&gt;amount,
+        ];
+    }
+
+    public function refund(string $paymentId): void
+    {
+        $this-&gt;stripe-&gt;refunds-&gt;create(['payment_intent' =&gt; $paymentId]);
+    }
+}</code></pre>
+</figure>
+
+<h4>3 · The factory</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Payment/StripeGatewayFactory.php</span><span class="grow"></span></div>
 <pre><code class="language-php">&lt;?php
 
 declare(strict_types=1);
@@ -1470,44 +1856,72 @@ namespace App\Payment;
 use Psr\Container\ContainerInterface;
 use Stripe\StripeClient;
 
-final class StripeClientFactory
+final class StripeGatewayFactory
 {
-    public function __invoke(ContainerInterface $container): StripeClient
+    public function __invoke(ContainerInterface $container): StripeGateway
     {
         $config = $container-&gt;get('config')['stripe'];
 
-        return new StripeClient($config['secret_key']);
+        return new StripeGateway(new StripeClient($config['secret_key']));
     }
 }</code></pre>
 </figure>
+
+<h4>4 · Register it</h4>
 <figure class="codeblock">
-<div class="cb-head"><span class="cb-file">A checkout handler using it</span><span class="grow"></span></div>
-<pre><code class="language-php">final class CheckoutHandler implements RequestHandlerInterface
+<div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php — getDependencies()</span><span class="grow"></span></div>
+<pre><code class="language-php">'factories' =&gt; [
+    Payment\StripeGateway::class =&gt; Payment\StripeGatewayFactory::class,
+    // ...
+],</code></pre>
+</figure>
+
+<h4>5 · Inject and use it in a handler</h4>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/CheckoutHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Handler;
+
+use App\Payment\StripeGateway;
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class CheckoutHandler implements RequestHandlerInterface
 {
-    public function __construct(private readonly StripeClient $stripe)
+    public function __construct(private readonly StripeGateway $payments)
     {
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        $body = (array) $request-&gt;getParsedBody();
+        $body   = (array) $request-&gt;getParsedBody();
+        $amount = (int) ($body['amount'] ?? 0);      // in cents
 
-        $intent = $this-&gt;stripe-&gt;paymentIntents-&gt;create([
-            'amount'   =&gt; (int) $body['amount'],   // cents
-            'currency' =&gt; 'usd',
-        ]);
+        if ($amount &lt; 50) {
+            return new JsonResponse(['error' =&gt; 'Minimum charge is 50 cents'], 422);
+        }
 
-        return new JsonResponse(['client_secret' =&gt; $intent-&gt;client_secret], 201);
+        return new JsonResponse($this-&gt;payments-&gt;createPayment($amount), 201);
     }
 }</code></pre>
 </figure>
+<p>Expose it with one line in <code>routes.php</code>, as always:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/routes.php</span><span class="grow"></span></div>
+<pre><code class="language-php">$app-&gt;post('/api/checkout', App\Handler\CheckoutHandler::class, 'checkout');</code></pre>
+</figure>
 
-<p>PDO, a mailer, Stripe — three integrations, <strong>one repeatable pattern</strong>. When you meet your next SDK (S3, Twilio, Redis…), you already know exactly where each piece goes: keys in <code>autoload/*.local.php</code>, construction in a factory, registration in the ConfigProvider, consumption via a constructor.</p>
+<p>PDO, Doctrine, a mailer, Stripe — four integrations, <strong>one repeatable pattern</strong>. When you meet your next SDK (S3, Twilio, Redis…), you already know exactly where each piece goes: keys in <code>autoload/*.local.php</code>, a client class of your own around the SDK, construction in a factory, registration in the ConfigProvider, consumption via a constructor.</p>
 </section>
 
 <!-- ================================================================ -->
 <section class="doc" id="errors">
-<h2><span class="sec-n">15</span>Error handling &amp; basic troubleshooting</h2>
+<h2><span class="sec-n">16</span>Error handling &amp; basic troubleshooting</h2>
 
 <p>Look back at the pipeline: <code>ErrorHandler</code> is piped <em>first</em>, which makes it the outermost doll — any exception thrown by anything deeper is caught there and turned into a response instead of a white screen.</p>
 
@@ -1591,7 +2005,7 @@ return function (Application $app, MiddlewareFactory $factory, ContainerInterfac
 
 <!-- ================================================================ -->
 <section class="doc" id="testing">
-<h2><span class="sec-n">16</span>Testing the API</h2>
+<h2><span class="sec-n">17</span>Testing the API</h2>
 
 <h3>curl — the whole surface in one script</h3>
 <p>You've been testing with curl all along; here's the full suite for the Products API, including the failure paths. <code>-i</code> shows status line and headers:</p>
@@ -1642,7 +2056,7 @@ pm.test("returns the new product", () =&gt; {
 
 <!-- ================================================================ -->
 <section class="doc" id="next-steps">
-<h2><span class="sec-n">17</span>Next steps</h2>
+<h2><span class="sec-n">18</span>Next steps</h2>
 
 <p>You've gone from zero to a Mezzio API with routing, middleware, DI, a database, third-party services, and API-shaped error handling. You now hold the complete mental toolkit: <strong>the pipeline</strong> (everything is a layer), <strong>the triangle</strong> (service ← factory ← ConfigProvider), and <strong>the merge</strong> (layered config, local wins). Everything below is those three ideas applied again.</p>
 
