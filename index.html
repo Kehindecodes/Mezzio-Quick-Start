@@ -469,9 +469,9 @@ sequenceDiagram
     $app-&gt;get('/api/products', App\Handler\ProductListHandler::class, 'products.list');
     $app-&gt;post('/api/products', App\Handler\CreateProductHandler::class, 'products.create');
 
-    // route parameter: {id} — with an optional regex constraint (FastRoute syntax)
-    $app-&gt;get('/api/products/{id:\d+}', App\Handler\ProductHandler::class, 'products.get');
-    $app-&gt;delete('/api/products/{id:\d+}', App\Handler\DeleteProductHandler::class, 'products.delete');
+    // route parameter: {productId} — with an optional regex constraint (FastRoute syntax)
+    $app-&gt;get('/api/products/{productId:\d+}', App\Handler\ProductHandler::class, 'products.get');
+    $app-&gt;delete('/api/products/{productId:\d+}', App\Handler\DeleteProductHandler::class, 'products.delete');
 
     // several methods, one handler:
     $app-&gt;route('/api/status', App\Handler\StatusHandler::class, ['GET', 'HEAD'], 'api.status');
@@ -483,7 +483,7 @@ sequenceDiagram
 <figure class="codeblock">
 <pre><code class="language-php">public function handle(ServerRequestInterface $request): ResponseInterface
 {
-    $id = (int) $request-&gt;getAttribute('id');   // "42" from /api/products/42
+    $id = (int) $request-&gt;getAttribute('productId');   // "42" from /api/products/42
 
     // query strings are separate: /api/products?page=2
     $page = (int) ($request-&gt;getQueryParams()['page'] ?? 1);
@@ -496,11 +496,11 @@ sequenceDiagram
 <ul>
   <li><strong>Method constraints are strict.</strong> <code>POST /api/products/42</code> against the routes above returns <code>405 Method Not Allowed</code> (courtesy of <code>MethodNotAllowedMiddleware</code> in the pipeline), not 404.</li>
   <li><strong>Route names</strong> (the third argument) let you generate URLs later with the <code>UrlHelper</code> instead of hard-coding paths.</li>
-  <li><strong>Regex constraints</strong> like <code>{id:\d+}</code> reject garbage early — <code>/api/products/abc</code> never reaches your handler.</li>
+  <li><strong>Regex constraints</strong> like <code>{productId:\d+}</code> reject garbage early — <code>/api/products/abc</code> never reaches your handler.</li>
 </ul>
 
 <span class="f-label">Use case</span>
-<p>You're adding "fetch one product" to an existing products API. You add a single line — <code>$app-&gt;get('/api/products/{id:\d+}', ProductHandler::class, 'products.get')</code> — and write the handler. No pipeline changes, no config changes: endpoints live in <code>routes.php</code>, full stop.</p>
+<p>You're adding "fetch one product" to an existing products API. You add a single line — <code>$app-&gt;get('/api/products/{productId:\d+}', ProductHandler::class, 'products.get')</code> — and write the handler. No pipeline changes, no config changes: endpoints live in <code>routes.php</code>, full stop.</p>
 </section>
 
 <!-- ================================================================ -->
@@ -672,6 +672,170 @@ $response = $errorHandler-&gt;process($request,
   <li>A cache middleware returns a stored response → the whole inner stack is skipped on a hit.</li>
 </ul>
 <p>The bug to avoid is short-circuiting <em>by accident</em>: if your middleware forgets to call <code>$handler-&gt;handle($request)</code> (or drops its return value), every request stops at that layer. If every route suddenly returns the same response or a blank 200, look for the middleware that forgot to delegate.</p>
+
+<h3>Passing data down the stack: request attributes</h3>
+<p>Layers don't just wave the request through — they often need to <strong>hand results to the layers inside them</strong>: "I already validated this payload", "the authenticated user is #42". The channel for that is the request itself, via PSR-7 <strong>attributes</strong>: an outer middleware attaches data with <code>$request-&gt;withAttribute('key', $value)</code>, passes the <em>new</em> request inward, and any deeper middleware or handler reads it back with <code>$request-&gt;getAttribute('key')</code>. You've already seen this mechanism without naming it — it's exactly how the router hands <code>{productId}</code> to your handler in section 05.</p>
+
+<p>One rule makes or breaks this: <strong>PSR-7 requests are immutable</strong>. <code>withAttribute()</code> does not modify <code>$request</code> — it returns a <em>copy</em> with the attribute added. You must delegate with that copy:</p>
+
+<figure class="codeblock">
+<pre><code class="language-php">// ✅ The copy carries the attribute inward
+return $handler-&gt;handle($request-&gt;withAttribute('user', $user));
+
+// ❌ Classic bug: attribute attached to a copy that is thrown away —
+//    the handler receives the ORIGINAL request, attribute silently null
+$request-&gt;withAttribute('user', $user);
+return $handler-&gt;handle($request);</code></pre>
+</figure>
+
+<p>Here it is end-to-end on the per-route pipeline from section 07. The route stacks a validator in front of the handler:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/routes.php</span><span class="grow"></span></div>
+<pre><code class="language-php">$app-&gt;post('/api/products', [
+    App\Middleware\ValidateProductMiddleware::class,  // runs first: validates, attaches
+    App\Handler\CreateProductHandler::class,          // runs second: reads, creates
+], 'products.create');</code></pre>
+</figure>
+
+<p><strong>The sender.</strong> <code>ValidateProductMiddleware</code> does all the input checking. If the payload is bad it short-circuits with a 422 and the handler never runs. If it's good, it attaches the <em>cleaned</em> data as an attribute and delegates inward:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Middleware/ValidateProductMiddleware.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Middleware;
+
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class ValidateProductMiddleware implements MiddlewareInterface
+{
+    public function process(
+        ServerRequestInterface $request,
+        RequestHandlerInterface $handler
+    ): ResponseInterface {
+        // BodyParamsMiddleware (piped globally) already parsed the JSON
+        $body  = (array) $request-&gt;getParsedBody();
+        $name  = trim((string) ($body['name'] ?? ''));
+        $price = $body['price'] ?? null;
+
+        if ($name === '' || ! is_numeric($price)) {
+            // Invalid → short-circuit. The handler never sees this request.
+            return new JsonResponse([
+                'error' =&gt; 'Fields "name" (string) and "price" (number) are required',
+            ], 422);
+        }
+
+        // Valid → attach the CLEANED data and hand the new request inward
+        return $handler-&gt;handle($request-&gt;withAttribute('validatedProduct', [
+            'name'  =&gt; $name,
+            'price' =&gt; (float) $price,
+        ]));
+    }
+}</code></pre>
+</figure>
+
+<p><strong>The receiver.</strong> <code>CreateProductHandler</code> is the <code>$handler</code> that <code>handle()</code> call reaches (it's the next — and last — entry in the route array). It picks the attribute off the request and gets to be pure business logic, with no validation code at all:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/CreateProductHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">final class CreateProductHandler implements RequestHandlerInterface
+{
+    public function __construct(private readonly ProductRepository $products)
+    {
+    }
+
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        // Guaranteed present and already clean: the only way into this
+        // handler is THROUGH ValidateProductMiddleware.
+        $data = $request-&gt;getAttribute('validatedProduct');
+
+        $product = $this-&gt;products-&gt;create($data['name'], $data['price']);
+
+        return new JsonResponse($product, 201);
+    }
+}</code></pre>
+</figure>
+
+<p>Notice the division of labour the attribute buys you: the middleware owns "is this input acceptable?", the handler owns "what do we do with it?" — and the handler can trust the data precisely <em>because</em> the stacking shape guarantees the validator already ran.</p>
+
+<h3>Attributes accumulate through longer chains</h3>
+<p>With more layers, each middleware adds its contribution to the same request, and anything deeper can read everything attached above it:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">config/routes.php</span><span class="grow"></span></div>
+<pre><code class="language-php">$app-&gt;post('/api/orders', [
+    App\Middleware\AuthenticationMiddleware::class,  // attaches 'user'
+    App\Middleware\ValidateOrderMiddleware::class,   // attaches 'validatedOrder'
+    App\Middleware\CheckStockMiddleware::class,      // READS 'validatedOrder', may veto
+    App\Handler\CreateOrderHandler::class,           // reads 'user' + 'validatedOrder'
+], 'orders.create');</code></pre>
+</figure>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart LR
+    REQ([Request]) --> AU[AuthenticationMiddleware<br/>+ user]
+    AU --> VA[ValidateOrderMiddleware<br/>+ validatedOrder]
+    VA --> ST[CheckStockMiddleware<br/>reads validatedOrder]
+    ST --> H[/"CreateOrderHandler<br/>reads user + validatedOrder"/]
+    style H fill:#faf1e8,stroke:#b45a1e,stroke-width:2px
+</pre>
+<p class="caption">Each layer enriches the request; everything attached upstream is readable downstream. Attributes only flow inward — data for the way back out belongs on the response.</p>
+</div>
+
+<p>The interesting layer is the middle one: <code>CheckStockMiddleware</code> is a <em>consumer</em> of one attribute and a gatekeeper for the layers below it — middleware-to-middleware hand-off, not just middleware-to-handler:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Middleware/CheckStockMiddleware.php</span><span class="grow"></span></div>
+<pre><code class="language-php">final class CheckStockMiddleware implements MiddlewareInterface
+{
+    public function __construct(private readonly StockService $stock)
+    {
+    }
+
+    public function process(
+        ServerRequestInterface $request,
+        RequestHandlerInterface $handler
+    ): ResponseInterface {
+        // Reads what ValidateOrderMiddleware attached one layer up
+        $order = $request-&gt;getAttribute('validatedOrder');
+
+        if (! $this-&gt;stock-&gt;isAvailable($order['sku'], $order['quantity'])) {
+            return new JsonResponse(['error' =&gt; 'Out of stock'], 409);
+        }
+
+        // Nothing to add — pass the request through unchanged
+        return $handler-&gt;handle($request);
+    }
+}</code></pre>
+</figure>
+
+<p>And the handler at the centre harvests everything the stack prepared for it:</p>
+
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Handler/CreateOrderHandler.php</span><span class="grow"></span></div>
+<pre><code class="language-php">public function handle(ServerRequestInterface $request): ResponseInterface
+{
+    $user  = $request-&gt;getAttribute('user');            // from AuthenticationMiddleware
+    $order = $request-&gt;getAttribute('validatedOrder');  // from ValidateOrderMiddleware
+
+    $created = $this-&gt;orders-&gt;create($user-&gt;getId(), $order);
+
+    return new JsonResponse($created, 201);
+}</code></pre>
+</figure>
+
+<div class="note">
+  <p><strong>Two habits keep attributes sane.</strong> First, attributes travel <em>inward only</em> — a deeper layer can't send data back out through the request; anything for the return trip goes on the response (a header, usually). Second, an attribute is an implicit contract ("someone above me set this"), so keep the key names in one place — a class constant like <code>ValidateProductMiddleware::PRODUCT_ATTRIBUTE</code> beats scattering the string <code>'validatedProduct'</code> across files.</p>
+</div>
 
 <div class="mental-model">
   <span class="mm-tag">Mental model</span>
@@ -948,7 +1112,7 @@ return $aggregator-&gt;getMergedConfig();</code></pre>
   <thead><tr><th>Method + path</th><th>Does</th><th>Handler</th></tr></thead>
   <tbody>
     <tr><td><code>GET /api/products</code></td><td>List all products</td><td><code>ProductListHandler</code></td></tr>
-    <tr><td><code>GET /api/products/{id}</code></td><td>Fetch one product (404 if missing)</td><td><code>ProductHandler</code></td></tr>
+    <tr><td><code>GET /api/products/{productId}</code></td><td>Fetch one product (404 if missing)</td><td><code>ProductHandler</code></td></tr>
     <tr><td><code>POST /api/products</code></td><td>Create a product from a JSON body</td><td><code>CreateProductHandler</code></td></tr>
   </tbody>
 </table>
@@ -1018,8 +1182,56 @@ class ProductRepository
 </li>
 
 <li>
+<h4>Write the validation middleware</h4>
+<p>This is the sender/receiver pattern from section 08, now in its permanent home. <code>ValidateProductMiddleware</code> owns "is this input acceptable?" for the <code>POST</code> endpoint: bad payloads get a 422 and never reach the handler; good payloads travel inward as a request attribute. One upgrade over the §08 version — the attribute key lives in a <strong>class constant</strong>, exactly the habit that section's note recommended, so the middleware and the handler can never drift out of sync on the string:</p>
+<figure class="codeblock">
+<div class="cb-head"><span class="cb-file">src/App/src/Middleware/ValidateProductMiddleware.php</span><span class="grow"></span></div>
+<pre><code class="language-php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Middleware;
+
+use Laminas\Diactoros\Response\JsonResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+final class ValidateProductMiddleware implements MiddlewareInterface
+{
+    // Downstream readers reference this constant instead of a bare string (§08)
+    public const PRODUCT_ATTRIBUTE = 'validatedProduct';
+
+    public function process(
+        ServerRequestInterface $request,
+        RequestHandlerInterface $handler
+    ): ResponseInterface {
+        // BodyParamsMiddleware (step 1) already parsed the JSON body
+        $body  = (array) $request-&gt;getParsedBody();
+        $name  = trim((string) ($body['name'] ?? ''));
+        $price = $body['price'] ?? null;
+
+        if ($name === '' || ! is_numeric($price)) {
+            // Short-circuit: the handler never runs for invalid input
+            return new JsonResponse([
+                'error' =&gt; 'Fields "name" (string) and "price" (number) are required',
+            ], 422);
+        }
+
+        // Attach the cleaned data and delegate inward with the NEW request
+        return $handler-&gt;handle($request-&gt;withAttribute(self::PRODUCT_ATTRIBUTE, [
+            'name'  =&gt; $name,
+            'price' =&gt; (float) $price,
+        ]));
+    }
+}</code></pre>
+</figure>
+</li>
+
+<li>
 <h4>Write the handlers</h4>
-<p>Three small classes, one per endpoint. Each declares the repository in its constructor and does exactly one job:</p>
+<p>Three small classes, one per endpoint. Each declares the repository in its constructor and does exactly one job — and <code>CreateProductHandler</code> gets to be pure business logic, because the middleware above guarantees anything reaching it is already valid:</p>
 <figure class="codeblock">
 <div class="cb-head"><span class="cb-file">src/App/src/Handler/ProductListHandler.php</span><span class="grow"></span></div>
 <pre><code class="language-php">&lt;?php
@@ -1069,7 +1281,7 @@ final class ProductHandler implements RequestHandlerInterface
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        $id      = (int) $request-&gt;getAttribute('id');   // from {id:\d+} in the route
+        $id      = (int) $request-&gt;getAttribute('productId');   // from {productId:\d+} in the route
         $product = $this-&gt;products-&gt;find($id);
 
         if ($product === null) {
@@ -1089,6 +1301,7 @@ declare(strict_types=1);
 
 namespace App\Handler;
 
+use App\Middleware\ValidateProductMiddleware;
 use App\Repository\ProductRepository;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -1103,18 +1316,11 @@ final class CreateProductHandler implements RequestHandlerInterface
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        // BodyParamsMiddleware (step 1) already parsed the JSON body
-        $body  = (array) $request-&gt;getParsedBody();
-        $name  = trim((string) ($body['name'] ?? ''));
-        $price = $body['price'] ?? null;
+        // Attached by ValidateProductMiddleware (step 3) — guaranteed present
+        // and already cleaned, because that middleware is the only way in here
+        $data = $request-&gt;getAttribute(ValidateProductMiddleware::PRODUCT_ATTRIBUTE);
 
-        if ($name === '' || ! is_numeric($price)) {
-            return new JsonResponse([
-                'error' =&gt; 'Fields "name" (string) and "price" (number) are required',
-            ], 422);
-        }
-
-        $product = $this-&gt;products-&gt;create($name, (float) $price);
+        $product = $this-&gt;products-&gt;create($data['name'], $data['price']);
 
         return new JsonResponse($product, 201);
     }
@@ -1148,6 +1354,7 @@ final class ProductListHandlerFactory
 
 <li>
 <h4>Register everything in the ConfigProvider</h4>
+<p>The middleware has no constructor dependencies, so like the repository it registers as an invokable — no factory needed:</p>
 <figure class="codeblock">
 <div class="cb-head"><span class="cb-file">src/App/src/ConfigProvider.php — getDependencies()</span><span class="grow"></span></div>
 <pre><code class="language-php">public function getDependencies(): array
@@ -1156,6 +1363,7 @@ final class ProductListHandlerFactory
         'invokables' =&gt; [
             Handler\PingHandler::class =&gt; Handler\PingHandler::class,
             Repository\ProductRepository::class =&gt; Repository\ProductRepository::class,
+            Middleware\ValidateProductMiddleware::class =&gt; Middleware\ValidateProductMiddleware::class,
         ],
         'factories' =&gt; [
             Handler\ProductListHandler::class   =&gt; Handler\ProductListHandlerFactory::class,
@@ -1173,11 +1381,17 @@ final class ProductListHandlerFactory
 
 <li>
 <h4>Add the routes</h4>
+<p>The two <code>GET</code> routes point straight at their handlers. The <code>POST</code> route uses the array form from section 07 — a per-route mini-pipeline that stacks the validator in front of the handler (§08):</p>
 <figure class="codeblock">
 <div class="cb-head"><span class="cb-file">config/routes.php</span><span class="grow"></span></div>
 <pre><code class="language-php">$app-&gt;get('/api/products', App\Handler\ProductListHandler::class, 'products.list');
-$app-&gt;get('/api/products/{id:\d+}', App\Handler\ProductHandler::class, 'products.get');
-$app-&gt;post('/api/products', App\Handler\CreateProductHandler::class, 'products.create');</code></pre>
+$app-&gt;get('/api/products/{productId:\d+}', App\Handler\ProductHandler::class, 'products.get');
+
+// Mini-pipeline: request passes THROUGH the validator to REACH the handler
+$app-&gt;post('/api/products', [
+    App\Middleware\ValidateProductMiddleware::class,
+    App\Handler\CreateProductHandler::class,
+], 'products.create');</code></pre>
 </figure>
 </li>
 
@@ -1198,13 +1412,19 @@ curl http://localhost:8080/api/products/999
 curl -X POST http://localhost:8080/api/products \
      -H 'Content-Type: application/json' \
      -d '{"name":"Webcam","price":59.99}'
-# {"id":3,"name":"Webcam","price":59.99}   ← 201</code></pre>
+# {"id":3,"name":"Webcam","price":59.99}   ← 201, validator delegated inward
+
+curl -X POST http://localhost:8080/api/products \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"","price":"cheap"}'
+# {"error":"Fields \"name\" (string) and \"price\" (number) are required"}
+# ← 422: ValidateProductMiddleware short-circuited; the handler never ran</code></pre>
 </figure>
 </li>
 
 </ol>
 
-<p>Take stock of what each concept did: <strong>piping</strong> gave every endpoint JSON parsing (step 1); a <strong>service</strong> holds the business logic (step 2); <strong>handlers</strong> are the destinations (step 3); <strong>factories + ConfigProvider</strong> wired the dependency graph (steps 4–5); <strong>routing</strong> exposed it all as URLs (step 6). That's the entire Mezzio development loop — every feature you ever add is some subset of these steps.</p>
+<p>Take stock of what each concept did: <strong>piping</strong> gave every endpoint JSON parsing (step 1); a <strong>service</strong> holds the business logic (step 2); <strong>route-attached middleware</strong> guards one endpoint's input and hands validated data inward as a request attribute (step 3); <strong>handlers</strong> are the destinations (step 4); <strong>factories + ConfigProvider</strong> wired the dependency graph (steps 5–6); <strong>routing</strong> exposed it all as URLs (step 7). That's the entire Mezzio development loop — every feature you ever add is some subset of these steps.</p>
 </section>
 <!-- ================================================================ -->
 <section class="doc" id="database">
@@ -1348,7 +1568,7 @@ final class ProductRepositoryFactory
   'CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL);'</code></pre>
 </figure>
 
-<p>Re-run the curls from §12 step 7 — identical API, but now <code>POST</code>ed products survive a restart. <strong>No handler changed, no route changed</strong>: one factory and one config file brought in a database.</p>
+<p>Re-run the curls from §12 step 8 — identical API, but now <code>POST</code>ed products survive a restart. <strong>No handler changed, no route changed</strong>: one factory and one config file brought in a database.</p>
 
 <div class="note">
   <span class="tag">Beyond raw PDO</span>
@@ -1988,7 +2208,7 @@ return function (Application $app, MiddlewareFactory $factory, ContainerInterfac
     </tr>
     <tr>
       <td>404 on a route you defined</td>
-      <td>Typo in the path, wrong HTTP method, or a regex constraint like <code>{id:\d+}</code> rejecting your test URL — re-read the route line in <code>routes.php</code></td>
+      <td>Typo in the path, wrong HTTP method, or a regex constraint like <code>{productId:\d+}</code> rejecting your test URL — re-read the route line in <code>routes.php</code></td>
     </tr>
     <tr>
       <td>405 instead of the expected response</td>
@@ -2021,7 +2241,7 @@ curl -i -X POST http://localhost:8080/api/products \
 
 # failure paths — a good API fails predictably ---------------------
 curl -i http://localhost:8080/api/products/999            # 404, not found
-curl -i http://localhost:8080/api/products/abc            # 404, {id:\d+} rejected it
+curl -i http://localhost:8080/api/products/abc            # 404, {productId:\d+} rejected it
 
 curl -i -X POST http://localhost:8080/api/products \
      -H 'Content-Type: application/json' \
